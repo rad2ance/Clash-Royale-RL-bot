@@ -53,7 +53,7 @@ class CrLikeSimEnv(gym.Env):
     - sparse-ish reward from tower damage exchange
     """
 
-    metadata = {"render_modes": []}
+    metadata = {"render_modes": ["rgb_array"]}
 
     def __init__(self, config: SimConfig | None = None, seed: int | None = None) -> None:
         super().__init__()
@@ -92,6 +92,7 @@ class CrLikeSimEnv(gym.Env):
         self.enemy_princess_hps = np.full(2, self.cfg.princess_hp, dtype=np.float32)
         self.hand_ids = np.zeros(self.cfg.hand_size, dtype=np.int32)
         self.hand_costs = np.zeros(self.cfg.hand_size, dtype=np.float32)
+        self._last_decoded_action: tuple[int, int, int] | None = None
         self._draw_initial_hand()
 
     def _build_default_card_catalog(self) -> dict[int, CardMeta]:
@@ -308,11 +309,13 @@ class CrLikeSimEnv(gym.Env):
         self.own_princess_hps[:] = self.cfg.princess_hp
         self.enemy_princess_hps[:] = self.cfg.princess_hp
         self._draw_initial_hand()
+        self._last_decoded_action = None
         return self._get_obs(), {"legal_action_mask": self.get_legal_action_mask()}
 
     def step(self, action: int):
         action_i = int(action)
         decoded = self._decode_action(action_i)
+        self._last_decoded_action = decoded
         legal_action = self.is_action_legal(action_i)
         spent_elixir = 0.0
         damage_to_enemy = 0.0
@@ -383,6 +386,100 @@ class CrLikeSimEnv(gym.Env):
             "card_type": played_card_type,
         }
         return self._get_obs(), float(reward), terminated, truncated, info
+
+    def render(self) -> np.ndarray:
+        """
+        Render a lightweight top-down frame of the simulator state.
+        Returns an RGB uint8 image with shape [H, W, 3].
+        """
+        cell = 18
+        arena_w = self.cfg.grid_w * cell
+        arena_h = self.cfg.grid_h * cell
+        hand_h = 72
+        status_h = 36
+        width = arena_w
+        height = status_h + arena_h + hand_h
+        img = np.zeros((height, width, 3), dtype=np.uint8)
+
+        # Status strip.
+        img[:status_h, :, :] = np.array([24, 24, 28], dtype=np.uint8)
+        time_ratio = np.clip(self.time_left / 180.0, 0.0, 1.0)
+        elixir_ratio = np.clip(self.elixir / max(self.cfg.max_elixir, 1e-6), 0.0, 1.0)
+        t_w = int((width - 20) * time_ratio)
+        e_w = int((width - 20) * elixir_ratio)
+        img[8:14, 10 : 10 + t_w, :] = np.array([84, 160, 255], dtype=np.uint8)
+        img[20:28, 10 : 10 + e_w, :] = np.array([80, 220, 140], dtype=np.uint8)
+
+        # Arena background.
+        y0 = status_h
+        y1 = status_h + arena_h
+        img[y0:y1, :, :] = np.array([34, 128, 84], dtype=np.uint8)
+
+        # Grid lines.
+        grid_line = np.array([44, 146, 98], dtype=np.uint8)
+        for gx in range(self.cfg.grid_w + 1):
+            x = gx * cell
+            img[y0:y1, max(0, x - 1) : min(width, x + 1), :] = grid_line
+        for gy in range(self.cfg.grid_h + 1):
+            y = y0 + gy * cell
+            img[max(y0, y - 1) : min(y1, y + 1), :, :] = grid_line
+
+        # River rows.
+        river_lo = min(self.river_top_y, self.river_bottom_y)
+        river_hi = max(self.river_top_y, self.river_bottom_y)
+        for gy in range(river_lo, river_hi + 1):
+            ry0 = y0 + gy * cell
+            ry1 = min(y1, ry0 + cell)
+            img[ry0:ry1, :, :] = np.array([36, 108, 188], dtype=np.uint8)
+
+        # Bridge lanes.
+        for bx in self.cfg.bridge_xs:
+            bx0 = max(0, int((bx - self.cfg.bridge_lane_half_width) * cell))
+            bx1 = min(width, int((bx + self.cfg.bridge_lane_half_width + 1) * cell))
+            for gy in range(river_lo, river_hi + 1):
+                ry0 = y0 + gy * cell
+                ry1 = min(y1, ry0 + cell)
+                img[ry0:ry1, bx0:bx1, :] = np.array([194, 162, 108], dtype=np.uint8)
+
+        # Last action marker.
+        if self._last_decoded_action is not None:
+            _, ax, ay = self._last_decoded_action
+            cx0 = ax * cell + 3
+            cx1 = min(width, (ax + 1) * cell - 3)
+            cy0 = y0 + ay * cell + 3
+            cy1 = min(y1, y0 + (ay + 1) * cell - 3)
+            img[cy0:cy1, cx0:cx1, :] = np.array([255, 82, 82], dtype=np.uint8)
+
+        # Simple tower HP bars.
+        own_hp = np.clip(self.own_king_hp / max(self.cfg.king_hp, 1e-6), 0.0, 1.0)
+        enemy_hp = np.clip(self.enemy_king_hp / max(self.cfg.king_hp, 1e-6), 0.0, 1.0)
+        own_w = int((width // 2 - 20) * own_hp)
+        enemy_w = int((width // 2 - 20) * enemy_hp)
+        img[y0 + arena_h - 14 : y0 + arena_h - 8, 10 : 10 + own_w, :] = np.array([80, 220, 140], dtype=np.uint8)
+        ex0 = width // 2 + 10
+        img[y0 + 8 : y0 + 14, ex0 : ex0 + enemy_w, :] = np.array([255, 110, 96], dtype=np.uint8)
+
+        # Hand strip.
+        hy0 = y1
+        img[hy0:height, :, :] = np.array([40, 40, 46], dtype=np.uint8)
+        slot_w = width // self.cfg.hand_size
+        for s in range(self.cfg.hand_size):
+            sx0 = s * slot_w
+            sx1 = min(width, (s + 1) * slot_w)
+            card = self.get_card_meta(int(self.hand_ids[s]))
+            if card.card_type == "spell":
+                base = np.array([76, 132, 255], dtype=np.uint8)
+            elif card.card_type == "building":
+                base = np.array([194, 162, 108], dtype=np.uint8)
+            else:
+                base = np.array([108, 206, 124], dtype=np.uint8)
+            pad = 6
+            img[hy0 + 8 : height - 24, sx0 + pad : sx1 - pad, :] = base
+            mana = int(np.clip(self.hand_costs[s], 0, 10))
+            mana_w = int((sx1 - sx0 - 2 * pad) * (mana / 10.0))
+            img[height - 18 : height - 12, sx0 + pad : sx0 + pad + mana_w, :] = np.array([230, 230, 236], dtype=np.uint8)
+
+        return img
 
 
 def flatten_observation(obs: dict[str, np.ndarray]) -> np.ndarray:

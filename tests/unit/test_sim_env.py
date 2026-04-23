@@ -224,3 +224,12 @@ def test_building_profile_has_lower_enemy_damage_than_troop_same_cost() -> None:
     assert building_info["card_type"] == "building"
     assert troop_info["card_type"] == "troop"
     assert float(building_info["damage_to_enemy"]) < float(troop_info["damage_to_enemy"])
+
+
+def test_render_returns_rgb_array() -> None:
+    env = CrLikeSimEnv()
+    env.reset(seed=0)
+    frame = env.render()
+    assert frame.ndim == 3
+    assert frame.shape[2] == 3
+    assert frame.dtype == np.uint8

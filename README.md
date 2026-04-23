@@ -60,6 +60,12 @@ Train PPO with action masking (recommended):
 python scripts/train_ppo.py --timesteps 200000 --out checkpoints/ppo_sim_masked --mask-actions
 ```
 
+Visualize a simulator episode as GIF:
+
+```powershell
+python scripts/visualize_sim_episode.py --steps 240 --fps 10 --out data/sim_viz/episode.gif
+```
+
 ## Layout
 
 ```text
