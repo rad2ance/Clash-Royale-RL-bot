@@ -79,6 +79,13 @@ python scripts/eval_policy.py --policy ppo --checkpoint checkpoints/ppo_sim.zip 
 python scripts/eval_policy.py --policy ppo-mask --checkpoint checkpoints/ppo_sim_masked.zip --episodes 20 --out data/eval/ppo_mask_eval.json
 ```
 
+Compare multiple eval runs:
+
+```powershell
+python scripts/compare_eval_runs.py --glob "data/eval/*.json" --sort-by mean_reward
+python scripts/compare_eval_runs.py --glob "data/eval/*.json" --sort-by win_rate --csv-out data/eval/compare.csv
+```
+
 Visualize a simulator episode as GIF:
 
 ```powershell
