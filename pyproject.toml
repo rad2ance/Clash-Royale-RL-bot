@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "crbot"
+version = "0.1.0"
+description = "Clash Royale research bot: simulator, imitation learning, and RL tooling."
+requires-python = ">=3.10"
+dependencies = [
+  "numpy>=1.26",
+  "torch>=2.3",
+  "gymnasium>=1.0",
+  "pyyaml>=6.0",
+]
+
+[project.optional-dependencies]
+rl = ["stable-baselines3>=2.5"]
+imitation = ["imitation>=1.0.0"]
+vision = ["opencv-python>=4.10"]
+adb = ["adbutils>=2.12.0"]
+dev = ["pytest>=8.2", "ruff>=0.7", "mypy>=1.11"]
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+

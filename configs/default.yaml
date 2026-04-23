@@ -1,0 +1,30 @@
+project:
+  name: "crbot"
+  seed: 42
+
+sim:
+  max_steps: 900
+  step_seconds: 0.2
+  max_elixir: 10.0
+  elixir_regen_per_step: 0.1
+  hand_size: 4
+  n_cards: 12
+  grid_w: 8
+  grid_h: 14
+
+bc:
+  epochs: 10
+  batch_size: 512
+  learning_rate: 0.0003
+  hidden_dim: 256
+
+ppo:
+  total_timesteps: 200000
+  learning_rate: 0.0003
+  gamma: 0.99
+
+emulator:
+  host: "127.0.0.1"
+  port: 5555
+  adb_path: "adb"
+
