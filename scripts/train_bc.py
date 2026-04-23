@@ -5,10 +5,15 @@ from pathlib import Path
 
 import torch
 from torch import nn
-from torch.utils.data import DataLoader, random_split
+from torch.utils.data import DataLoader, TensorDataset
 
 from crbot.data import BehaviorCloningDataset, list_episode_files
 from crbot.models import BcPolicy
+
+
+def apply_action_mask(logits: torch.Tensor, masks: torch.Tensor) -> torch.Tensor:
+    # Large negative value rather than -inf keeps CE numerically stable.
+    return logits.masked_fill(~masks.bool(), -1e9)
 
 
 def train_epoch(model: nn.Module, loader: DataLoader, optimizer: torch.optim.Optimizer, device: str) -> float:
@@ -16,10 +21,18 @@ def train_epoch(model: nn.Module, loader: DataLoader, optimizer: torch.optim.Opt
     total_loss = 0.0
     total = 0
     ce = nn.CrossEntropyLoss()
-    for obs, actions in loader:
+    for batch in loader:
+        if len(batch) == 3:
+            obs, actions, masks = batch
+            masks = masks.to(device)
+        else:
+            obs, actions = batch
+            masks = None
         obs = obs.to(device)
         actions = actions.to(device)
         logits = model(obs)
+        if masks is not None:
+            logits = apply_action_mask(logits, masks)
         loss = ce(logits, actions)
         optimizer.zero_grad(set_to_none=True)
         loss.backward()
@@ -37,10 +50,18 @@ def eval_epoch(model: nn.Module, loader: DataLoader, device: str) -> tuple[float
     total_loss = 0.0
     correct = 0
     total = 0
-    for obs, actions in loader:
+    for batch in loader:
+        if len(batch) == 3:
+            obs, actions, masks = batch
+            masks = masks.to(device)
+        else:
+            obs, actions = batch
+            masks = None
         obs = obs.to(device)
         actions = actions.to(device)
         logits = model(obs)
+        if masks is not None:
+            logits = apply_action_mask(logits, masks)
         loss = ce(logits, actions)
         preds = torch.argmax(logits, dim=1)
         bs = obs.size(0)
@@ -58,6 +79,7 @@ def main() -> None:
     parser.add_argument("--lr", type=float, default=3e-4)
     parser.add_argument("--val-split", type=float, default=0.1)
     parser.add_argument("--hidden-dim", type=int, default=256)
+    parser.add_argument("--mask-actions", action="store_true", help="Use per-sample action masks when available.")
     parser.add_argument("--out", type=str, default="checkpoints/bc_policy.pt")
     args = parser.parse_args()
 
@@ -68,11 +90,29 @@ def main() -> None:
     dataset = BehaviorCloningDataset(files)
     obs_dim = int(dataset.observations.shape[1])
     n_actions = int(dataset.actions.max()) + 1
-    print(f"[data] transitions={len(dataset)} obs_dim={obs_dim} n_actions={n_actions}")
+    if dataset.action_masks is not None:
+        n_actions = max(n_actions, int(dataset.action_masks.shape[1]))
+    use_masks = bool(args.mask_actions and dataset.action_masks is not None)
+    if args.mask_actions and dataset.action_masks is None:
+        raise ValueError("Requested --mask-actions but loaded dataset has no action_masks.")
+    print(f"[data] transitions={len(dataset)} obs_dim={obs_dim} n_actions={n_actions} mask_actions={use_masks}")
 
-    n_val = int(len(dataset) * args.val_split)
-    n_train = len(dataset) - n_val
-    train_ds, val_ds = random_split(dataset, [n_train, n_val], generator=torch.Generator().manual_seed(42))
+    n_total = len(dataset)
+    n_val = int(n_total * args.val_split)
+    n_train = n_total - n_val
+    perm = torch.randperm(n_total, generator=torch.Generator().manual_seed(42))
+    train_idx = perm[:n_train]
+    val_idx = perm[n_train:]
+
+    obs_t = torch.from_numpy(dataset.observations)
+    act_t = torch.from_numpy(dataset.actions).long()
+    if use_masks:
+        mask_t = torch.from_numpy(dataset.action_masks).bool()
+        train_ds = TensorDataset(obs_t[train_idx], act_t[train_idx], mask_t[train_idx])
+        val_ds = TensorDataset(obs_t[val_idx], act_t[val_idx], mask_t[val_idx])
+    else:
+        train_ds = TensorDataset(obs_t[train_idx], act_t[train_idx])
+        val_ds = TensorDataset(obs_t[val_idx], act_t[val_idx])
 
     train_loader = DataLoader(train_ds, batch_size=args.batch_size, shuffle=True, num_workers=0)
     val_loader = DataLoader(val_ds, batch_size=args.batch_size, shuffle=False, num_workers=0)
@@ -101,6 +141,7 @@ def main() -> None:
             "obs_dim": obs_dim,
             "n_actions": n_actions,
             "hidden_dim": args.hidden_dim,
+            "masked_actions": use_masks,
         },
         out_path,
     )
@@ -109,4 +150,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

@@ -39,6 +39,13 @@ Train behavior cloning on the generated trajectories:
 python scripts/train_bc.py --data-dir data/sim_random --epochs 8 --out checkpoints/bc_sim.pt
 ```
 
+If your dataset includes `action_masks`, you can train BC with mask-aware
+logits:
+
+```powershell
+python scripts/train_bc.py --data-dir data/sim_random --epochs 8 --mask-actions --out checkpoints/bc_sim_masked.pt
+```
+
 Record a real BlueStacks play session (human demonstrations):
 
 ```powershell

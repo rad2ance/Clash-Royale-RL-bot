@@ -2,7 +2,7 @@ from pathlib import Path
 
 import numpy as np
 
-from crbot.data import EpisodeBatch, load_episode, save_episode
+from crbot.data import BehaviorCloningDataset, EpisodeBatch, load_episode, save_episode
 
 
 def test_save_load_roundtrip(tmp_path: Path) -> None:
@@ -36,3 +36,18 @@ def test_load_episode_backward_compatible_without_masks(tmp_path: Path) -> None:
     )
     loaded = load_episode(out)
     assert loaded.action_masks is None
+
+
+def test_behavior_cloning_dataset_exposes_masks_when_all_present(tmp_path: Path) -> None:
+    ep = EpisodeBatch(
+        observations=np.random.randn(4, 8).astype(np.float32),
+        actions=np.random.randint(0, 6, size=(4,), dtype=np.int64),
+        rewards=np.random.randn(4).astype(np.float32),
+        dones=np.zeros(4, dtype=bool),
+        action_masks=np.random.randint(0, 2, size=(4, 12), dtype=np.int8).astype(bool),
+    )
+    out = tmp_path / "ep.npz"
+    save_episode(out, ep)
+    ds = BehaviorCloningDataset([out])
+    assert ds.action_masks is not None
+    assert ds.action_masks.shape == (4, 12)
