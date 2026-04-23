@@ -22,6 +22,7 @@ def test_env_reset_and_step_shapes() -> None:
     assert isinstance(truncated, bool)
     assert "legal_action" in step_info
     assert "illegal_reason" in step_info
+    assert "card_type" in step_info
     assert "legal_action_mask" in step_info
     assert step_info["legal_action_mask"].shape == (env.n_actions,)
 
@@ -176,3 +177,50 @@ def test_replacement_card_cost_matches_metadata() -> None:
     new_cid = int(env.hand_ids[slot])
     expected = float(env.get_card_meta(new_cid).elixir_cost)
     assert float(env.hand_costs[slot]) == expected
+
+
+def _run_single_play(card_id: int, x: int, y: int):
+    env = CrLikeSimEnv()
+    env.reset(seed=123)
+    env.elixir = env.cfg.max_elixir
+    env.hand_ids[:] = np.array([card_id, card_id, card_id, card_id], dtype=np.int32)
+    expected_cost = float(env.get_card_meta(card_id).elixir_cost)
+    env.hand_costs[:] = np.array([expected_cost] * env.cfg.hand_size, dtype=np.float32)
+
+    slot = 0
+    action = 1 + slot * env.actions_per_card + y * env.cfg.grid_w + x
+    _, _, _, _, info = env.step(action)
+    return info
+
+
+def test_spell_profile_has_more_enemy_damage_and_less_self_damage_than_troop() -> None:
+    env = CrLikeSimEnv()
+    y = min(env.cfg.grid_h - 1, env.deploy_min_y + 1)
+    x = env.cfg.grid_w // 2
+    spell_id = 2
+    troop_id = 7
+    assert env.get_card_meta(spell_id).elixir_cost == env.get_card_meta(troop_id).elixir_cost
+
+    spell_info = _run_single_play(card_id=spell_id, x=x, y=y)
+    troop_info = _run_single_play(card_id=troop_id, x=x, y=y)
+
+    assert spell_info["card_type"] == "spell"
+    assert troop_info["card_type"] == "troop"
+    assert float(spell_info["damage_to_enemy"]) > float(troop_info["damage_to_enemy"])
+    assert float(spell_info["damage_to_self"]) < float(troop_info["damage_to_self"])
+
+
+def test_building_profile_has_lower_enemy_damage_than_troop_same_cost() -> None:
+    env = CrLikeSimEnv()
+    y = min(env.cfg.grid_h - 1, env.deploy_min_y + 1)
+    x = env.cfg.grid_w // 2
+    building_id = env.cfg.spell_card_count
+    troop_id = 7
+    assert env.get_card_meta(building_id).elixir_cost == env.get_card_meta(troop_id).elixir_cost
+
+    building_info = _run_single_play(card_id=building_id, x=x, y=y)
+    troop_info = _run_single_play(card_id=troop_id, x=x, y=y)
+
+    assert building_info["card_type"] == "building"
+    assert troop_info["card_type"] == "troop"
+    assert float(building_info["damage_to_enemy"]) < float(troop_info["damage_to_enemy"])

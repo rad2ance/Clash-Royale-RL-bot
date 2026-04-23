@@ -198,6 +198,39 @@ class CrLikeSimEnv(gym.Env):
                 return True
         return False
 
+    def _combat_profile(self, card: CardMeta) -> tuple[float, float, float]:
+        """
+        Return (offense_multiplier, self_damage_multiplier, king_damage_share).
+        """
+        offense_mult = 1.0
+        self_damage_mult = 1.0
+        king_share = 0.55
+
+        if card.card_type == "spell":
+            offense_mult *= 1.15
+            self_damage_mult *= 0.25
+            king_share = 0.45
+        elif card.card_type == "building":
+            offense_mult *= 0.85
+            self_damage_mult *= 0.55
+            king_share = 0.35
+        else:
+            king_share = 0.55
+
+        if card.target_type == "ground":
+            offense_mult *= 0.95
+            king_share = min(king_share, 0.4)
+        elif card.target_type == "any":
+            offense_mult *= 1.05
+            king_share = max(king_share, 0.6)
+        elif card.target_type == "area":
+            offense_mult *= 1.1
+
+        if card.can_hit_air:
+            self_damage_mult *= 0.9
+
+        return offense_mult, self_damage_mult, king_share
+
     def get_legal_action_mask(self) -> np.ndarray:
         """
         Return a boolean mask over the discrete action space.
@@ -284,22 +317,28 @@ class CrLikeSimEnv(gym.Env):
         spent_elixir = 0.0
         damage_to_enemy = 0.0
         damage_to_self = 0.0
+        played_card_type: str | None = None
 
         if legal_action and decoded is not None:
             slot, x, y = decoded
+            card = self.get_card_meta(int(self.hand_ids[slot]))
+            played_card_type = card.card_type
             cost = float(self.hand_costs[slot])
             spent_elixir = cost
             self.elixir = max(0.0, self.elixir - cost)
             board_factor = 1.0 - abs((x / max(1, self.cfg.grid_w - 1)) - 0.5)
             range_factor = 0.7 + 0.6 * (y / max(1, self.cfg.grid_h - 1))
+            offense_mult, self_damage_mult, king_share = self._combat_profile(card)
 
             damage_to_enemy = float((8.0 + 5.0 * cost) * board_factor * range_factor)
+            damage_to_enemy *= offense_mult
             enemy_chip = self.rng.uniform(0.8, 1.2)
             damage_to_enemy *= enemy_chip
-            damage_to_self = float(self.rng.uniform(0.0, 3.5) * cost)
+            damage_to_self = float(self.rng.uniform(0.0, 3.5) * cost * self_damage_mult)
 
-            self.enemy_king_hp = max(0.0, self.enemy_king_hp - 0.55 * damage_to_enemy)
-            self.enemy_princess_hps -= 0.45 * damage_to_enemy
+            princess_share = 1.0 - king_share
+            self.enemy_king_hp = max(0.0, self.enemy_king_hp - king_share * damage_to_enemy)
+            self.enemy_princess_hps -= princess_share * damage_to_enemy
             self.enemy_princess_hps = np.clip(self.enemy_princess_hps, 0.0, self.cfg.princess_hp)
 
             self.own_king_hp = max(0.0, self.own_king_hp - 0.55 * damage_to_self)
@@ -341,6 +380,7 @@ class CrLikeSimEnv(gym.Env):
             "damage_to_self": damage_to_self,
             "decoded_action": decoded,
             "legal_action_mask": self.get_legal_action_mask(),
+            "card_type": played_card_type,
         }
         return self._get_obs(), float(reward), terminated, truncated, info
 

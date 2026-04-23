@@ -81,7 +81,7 @@ tests/unit/                      lightweight tests
 
 ## Immediate next tasks
 
-1. Replace heuristic `CrLikeSimEnv` combat with card-specific dynamics.
+1. Extend card-specific dynamics with troop lifetimes and board interactions.
 2. Add visual state extraction from emulator screenshots.
 3. Integrate card metadata into combat and reward dynamics.
 4. Replace random data collection with human/heuristic trajectories.
