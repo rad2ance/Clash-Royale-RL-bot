@@ -98,3 +98,22 @@ def test_action_masks_alias_matches_legal_mask() -> None:
     env = CrLikeSimEnv()
     env.reset(seed=0)
     assert np.array_equal(env.action_masks(), env.get_legal_action_mask())
+
+
+def test_building_cards_are_center_lane_constrained() -> None:
+    env = CrLikeSimEnv()
+    env.reset(seed=0)
+    env.elixir = env.cfg.max_elixir
+    building_id = env.cfg.spell_card_count
+    env.hand_ids[:] = np.array([building_id, building_id, building_id, building_id], dtype=np.int32)
+    env.hand_costs[:] = np.array([1.0, 1.0, 1.0, 1.0], dtype=np.float32)
+
+    slot = 0
+    y = env.deploy_min_y
+    edge_x = 0
+    center_x = env.cfg.grid_w // 2
+    edge_action = 1 + slot * env.actions_per_card + y * env.cfg.grid_w + edge_x
+    center_action = 1 + slot * env.actions_per_card + y * env.cfg.grid_w + center_x
+
+    assert env.is_action_legal(edge_action) is False
+    assert env.is_action_legal(center_action) is True

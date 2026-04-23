@@ -83,7 +83,7 @@ tests/unit/                      lightweight tests
 
 1. Replace heuristic `CrLikeSimEnv` combat with card-specific dynamics.
 2. Add visual state extraction from emulator screenshots.
-3. Add richer card-type-aware placement rules (e.g. buildings constrained lanes and river constraints).
+3. Add river/bridge-aware constraints and lane priors from card metadata.
 4. Replace random data collection with human/heuristic trajectories.
 
 ## Real-play data notes

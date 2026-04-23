@@ -19,6 +19,7 @@ class SimConfig:
     hand_size: int = 4
     n_cards: int = 12
     spell_card_count: int = 3
+    building_card_count: int = 2
     grid_w: int = 8
     grid_h: int = 14
     # Actions can only deploy on the player's side of the arena.
@@ -112,6 +113,11 @@ class CrLikeSimEnv(gym.Env):
     def _is_spell_card(self, card_id: int) -> bool:
         return 0 <= int(card_id) < self.cfg.spell_card_count
 
+    def _is_building_card(self, card_id: int) -> bool:
+        start = self.cfg.spell_card_count
+        end = self.cfg.spell_card_count + self.cfg.building_card_count
+        return start <= int(card_id) < end
+
     def get_legal_action_mask(self) -> np.ndarray:
         """
         Return a boolean mask over the discrete action space.
@@ -123,12 +129,17 @@ class CrLikeSimEnv(gym.Env):
         mask[self.noop_action] = True
         affordable_slots = self.hand_costs <= (self.elixir + 1e-6)
         own_side_mask = np.zeros(self.actions_per_card, dtype=bool)
+        building_mask = np.zeros(self.actions_per_card, dtype=bool)
+        lane_left = 1
+        lane_right = max(lane_left, self.cfg.grid_w - 2)
         for y in range(self.cfg.grid_h):
             if y < self.deploy_min_y:
                 continue
             row_start = y * self.cfg.grid_w
             row_end = row_start + self.cfg.grid_w
             own_side_mask[row_start:row_end] = True
+            for x in range(lane_left, lane_right + 1):
+                building_mask[row_start + x] = True
         all_arena_mask = np.ones(self.actions_per_card, dtype=bool)
 
         for slot in range(self.cfg.hand_size):
@@ -137,7 +148,13 @@ class CrLikeSimEnv(gym.Env):
             start = 1 + slot * self.actions_per_card
             stop = start + self.actions_per_card
             card_id = int(self.hand_ids[slot])
-            mask[start:stop] = all_arena_mask if self._is_spell_card(card_id) else own_side_mask
+            if self._is_spell_card(card_id):
+                slot_mask = all_arena_mask
+            elif self._is_building_card(card_id):
+                slot_mask = building_mask
+            else:
+                slot_mask = own_side_mask
+            mask[start:stop] = slot_mask
         return mask
 
     def action_masks(self) -> np.ndarray:
