@@ -140,6 +140,12 @@ class CrLikeSimEnv(gym.Env):
             mask[start:stop] = all_arena_mask if self._is_spell_card(card_id) else own_side_mask
         return mask
 
+    def action_masks(self) -> np.ndarray:
+        """
+        Compatibility alias used by sb3-contrib MaskablePPO wrappers.
+        """
+        return self.get_legal_action_mask()
+
     def is_action_legal(self, action: int) -> bool:
         if action < 0 or action >= self.n_actions:
             return False

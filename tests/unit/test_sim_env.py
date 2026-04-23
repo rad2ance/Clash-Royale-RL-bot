@@ -92,3 +92,9 @@ def test_spell_cards_can_target_full_arena() -> None:
     x = env.cfg.grid_w // 2
     top_action = 1 + slot * env.actions_per_card + top_y * env.cfg.grid_w + x
     assert env.is_action_legal(top_action) is True
+
+
+def test_action_masks_alias_matches_legal_mask() -> None:
+    env = CrLikeSimEnv()
+    env.reset(seed=0)
+    assert np.array_equal(env.action_masks(), env.get_legal_action_mask())

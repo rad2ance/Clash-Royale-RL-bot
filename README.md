@@ -54,6 +54,12 @@ Train PPO baseline on simulator:
 python scripts/train_ppo.py --timesteps 200000 --out checkpoints/ppo_sim
 ```
 
+Train PPO with action masking (recommended):
+
+```powershell
+python scripts/train_ppo.py --timesteps 200000 --out checkpoints/ppo_sim_masked --mask-actions
+```
+
 ## Layout
 
 ```text

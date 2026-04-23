@@ -16,7 +16,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-rl = ["stable-baselines3>=2.5"]
+rl = ["stable-baselines3>=2.5", "sb3-contrib>=2.5"]
 imitation = ["imitation>=1.0.0"]
 vision = ["opencv-python>=4.10"]
 adb = ["adbutils>=2.12.0"]
