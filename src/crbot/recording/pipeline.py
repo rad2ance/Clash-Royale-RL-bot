@@ -27,6 +27,22 @@ class TapEvent:
 
 
 @dataclass(frozen=True)
+class ActionLabel:
+    """
+    Generic action label tied to timestamped frames.
+
+    Preferred format is `action` (already encoded discrete action id).
+    Alternative format is (`slot`, `grid_x`, `grid_y`) and action is encoded.
+    """
+
+    timestamp: float
+    action: int | None = None
+    slot: int | None = None
+    grid_x: int | None = None
+    grid_y: int | None = None
+
+
+@dataclass(frozen=True)
 class UiLayout:
     """
     Normalized UI layout (0..1 relative coordinates).
@@ -88,6 +104,21 @@ def load_frame_records(path: str | Path) -> list[FrameRecord]:
 
 def load_tap_events(path: str | Path) -> list[TapEvent]:
     return [TapEvent(**row) for row in load_jsonl(path)]
+
+
+def load_action_labels(path: str | Path) -> list[ActionLabel]:
+    labels: list[ActionLabel] = []
+    for row in load_jsonl(path):
+        labels.append(
+            ActionLabel(
+                timestamp=float(row["timestamp"]),
+                action=None if row.get("action") is None else int(row.get("action")),
+                slot=None if row.get("slot") is None else int(row.get("slot")),
+                grid_x=None if row.get("grid_x") is None else int(row.get("grid_x")),
+                grid_y=None if row.get("grid_y") is None else int(row.get("grid_y")),
+            )
+        )
+    return labels
 
 
 GETEVENT_RE = re.compile(
@@ -279,6 +310,57 @@ def build_episode_from_logs(
         dones.append(False)
         pending_slot = None
         pending_slot_ts = None
+
+    if not obs:
+        return None
+    dones[-1] = True
+    return EpisodeBatch(
+        observations=np.stack(obs, axis=0).astype(np.float32),
+        actions=np.array(acts, dtype=np.int64),
+        rewards=np.array(rews, dtype=np.float32),
+        dones=np.array(dones, dtype=bool),
+    )
+
+
+def build_episode_from_frame_actions(
+    frames: list[FrameRecord],
+    labels: list[ActionLabel],
+    hand_size: int = 4,
+    grid_w: int = 8,
+    grid_h: int = 14,
+    resize_w: int = 96,
+    resize_h: int = 54,
+) -> EpisodeBatch | None:
+    frames = sorted(frames, key=lambda x: x.timestamp)
+    labels = sorted(labels, key=lambda x: x.timestamp)
+
+    obs: list[np.ndarray] = []
+    acts: list[int] = []
+    rews: list[float] = []
+    dones: list[bool] = []
+
+    for label in labels:
+        action: int
+        if label.action is not None:
+            action = int(label.action)
+        else:
+            if label.slot is None or label.grid_x is None or label.grid_y is None:
+                continue
+            action = encode_action_from_slot_and_grid(
+                slot=int(label.slot),
+                grid_x=int(label.grid_x),
+                grid_y=int(label.grid_y),
+                hand_size=hand_size,
+                grid_w=grid_w,
+                grid_h=grid_h,
+            )
+        frame = _closest_frame_before(frames, label.timestamp)
+        if frame is None:
+            continue
+        obs.append(_encode_frame_image(frame.frame_path, resize_w=resize_w, resize_h=resize_h))
+        acts.append(action)
+        rews.append(0.0)
+        dones.append(False)
 
     if not obs:
         return None

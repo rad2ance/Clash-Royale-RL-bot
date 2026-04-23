@@ -58,6 +58,18 @@ Convert recorded sessions into BC episodes:
 python scripts/build_tap_bc_dataset.py --recordings-dir recordings --out data/il_tap
 ```
 
+Build BC episodes from replay/video sessions with action labels:
+
+```powershell
+python scripts/build_video_bc_dataset.py --sessions-dir video_sessions --out data/il_video
+```
+
+Merge multiple IL sources:
+
+```powershell
+python scripts/merge_il_datasets.py --inputs data/il_tap data/il_video --out data/il_merged --prefix-with-source
+```
+
 Train PPO baseline on simulator:
 
 ```powershell
@@ -155,6 +167,7 @@ tests/unit/                      lightweight tests
 - Roadmap: `docs/ROADMAP.md`
 - Backlog: `docs/BACKLOG.md`
 - Simulator status: `docs/SIM_STATUS.md`
+- IL source guide: `docs/IL_DATA_SOURCES.md`
 - GitHub issue templates live under `.github/ISSUE_TEMPLATE/`
 
 Bootstrap labels + starter issues (dry-run by default):
