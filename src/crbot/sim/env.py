@@ -218,6 +218,12 @@ class CrLikeSimEnv(gym.Env):
                 return True
         return False
 
+    def _nearest_bridge_x(self, x: int) -> int:
+        if not self.cfg.bridge_xs:
+            return int(np.clip(x, 0, self.cfg.grid_w - 1))
+        target = min(self.cfg.bridge_xs, key=lambda bx: abs(int(x) - int(bx)))
+        return int(np.clip(target, 0, self.cfg.grid_w - 1))
+
     def _combat_profile(self, card: CardMeta) -> tuple[float, float, float]:
         """
         Return (offense_multiplier, self_damage_multiplier, king_damage_share).
@@ -374,12 +380,28 @@ class CrLikeSimEnv(gym.Env):
             unit.ttl -= 1
             unit.hp -= 0.2
             if unit.card_type != "building":
-                unit.y = max(0, unit.y - 1)
+                next_y = max(0, unit.y - 1)
+                if self._is_river_row(next_y) and not self._is_bridge_lane_x(unit.x):
+                    target_x = self._nearest_bridge_x(unit.x)
+                    if unit.x < target_x:
+                        unit.x += 1
+                    elif unit.x > target_x:
+                        unit.x -= 1
+                else:
+                    unit.y = next_y
         for unit in self.enemy_units:
             unit.ttl -= 1
             unit.hp -= 0.2
             if unit.card_type != "building":
-                unit.y = min(self.cfg.grid_h - 1, unit.y + 1)
+                next_y = min(self.cfg.grid_h - 1, unit.y + 1)
+                if self._is_river_row(next_y) and not self._is_bridge_lane_x(unit.x):
+                    target_x = self._nearest_bridge_x(unit.x)
+                    if unit.x < target_x:
+                        unit.x += 1
+                    elif unit.x > target_x:
+                        unit.x -= 1
+                else:
+                    unit.y = next_y
 
         self.own_units = [u for u in self.own_units if u.ttl > 0 and u.hp > 0.0]
         self.enemy_units = [u for u in self.enemy_units if u.ttl > 0 and u.hp > 0.0]

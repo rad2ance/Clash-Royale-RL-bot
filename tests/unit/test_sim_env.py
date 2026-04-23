@@ -367,3 +367,55 @@ def test_target_priority_hits_closest_enemy_in_range() -> None:
     close_loss = close_hp_before - close.hp
     far_loss = far_hp_before - far.hp
     assert close_loss > far_loss
+
+
+def test_friendly_troop_moves_toward_bridge_before_river_crossing() -> None:
+    env = CrLikeSimEnv(config=SimConfig(enemy_spawn_chance=0.0))
+    env.reset(seed=0)
+    start_y = env.river_bottom_y + 1
+    start_x = 0  # not a bridge lane in default config
+    env.own_units = [
+        ActiveUnit(
+            x=start_x,
+            y=start_y,
+            hp=40.0,
+            dps=8.0,
+            ttl=6,
+            card_type="troop",
+            target_type="ground",
+            can_hit_air=False,
+            is_air=False,
+            is_enemy=False,
+        )
+    ]
+    env.step(env.noop_action)
+    assert env.own_units
+    unit = env.own_units[0]
+    # Should sidestep toward nearest bridge instead of entering river row.
+    assert unit.y == start_y
+    assert unit.x != start_x
+
+
+def test_friendly_troop_can_enter_river_on_bridge_lane() -> None:
+    env = CrLikeSimEnv(config=SimConfig(enemy_spawn_chance=0.0))
+    env.reset(seed=0)
+    start_y = env.river_bottom_y + 1
+    bridge_x = env._nearest_bridge_x(0)
+    env.own_units = [
+        ActiveUnit(
+            x=bridge_x,
+            y=start_y,
+            hp=40.0,
+            dps=8.0,
+            ttl=6,
+            card_type="troop",
+            target_type="ground",
+            can_hit_air=False,
+            is_air=False,
+            is_enemy=False,
+        )
+    ]
+    env.step(env.noop_action)
+    assert env.own_units
+    unit = env.own_units[0]
+    assert unit.y == env.river_bottom_y

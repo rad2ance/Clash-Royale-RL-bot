@@ -137,6 +137,7 @@ tests/unit/                      lightweight tests
 
 - Roadmap: `docs/ROADMAP.md`
 - Backlog: `docs/BACKLOG.md`
+- Simulator status: `docs/SIM_STATUS.md`
 - GitHub issue templates live under `.github/ISSUE_TEMPLATE/`
 
 Bootstrap labels + starter issues (dry-run by default):
