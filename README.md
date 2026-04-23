@@ -66,6 +66,12 @@ Visualize a simulator episode as GIF:
 python scripts/visualize_sim_episode.py --steps 240 --fps 10 --out data/sim_viz/episode.gif
 ```
 
+Optional debug metrics CSV aligned to frames:
+
+```powershell
+python scripts/visualize_sim_episode.py --steps 240 --fps 10 --out data/sim_viz/episode.gif --metrics-out data/sim_viz/episode_metrics.csv
+```
+
 ## Layout
 
 ```text
