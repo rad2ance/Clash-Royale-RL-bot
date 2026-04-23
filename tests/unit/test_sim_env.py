@@ -72,7 +72,8 @@ def test_legal_action_mask_enforces_deploy_side() -> None:
     env.reset(seed=0)
     env.elixir = env.cfg.max_elixir
     env.hand_costs[:] = np.array([1.0, 1.0, 1.0, 1.0], dtype=np.float32)
-    env.hand_ids[:] = np.array([env.cfg.spell_card_count + 1] * env.cfg.hand_size, dtype=np.int32)
+    troop_id = env.cfg.spell_card_count + env.cfg.building_card_count + 1
+    env.hand_ids[:] = np.array([troop_id] * env.cfg.hand_size, dtype=np.int32)
 
     slot = 0
     top_y = max(0, env.deploy_min_y - 1)
@@ -117,12 +118,12 @@ def test_building_cards_are_center_lane_constrained() -> None:
     slot = 0
     y = min(env.cfg.grid_h - 1, env.deploy_min_y + 1)
     edge_x = 0
-    center_x = env.cfg.grid_w // 2
+    bridge_x = env._nearest_bridge_x(env.cfg.grid_w // 2)
     edge_action = 1 + slot * env.actions_per_card + y * env.cfg.grid_w + edge_x
-    center_action = 1 + slot * env.actions_per_card + y * env.cfg.grid_w + center_x
+    bridge_action = 1 + slot * env.actions_per_card + y * env.cfg.grid_w + bridge_x
 
     assert env.is_action_legal(edge_action) is False
-    assert env.is_action_legal(center_action) is True
+    assert env.is_action_legal(bridge_action) is True
 
 
 def test_river_rows_block_non_spell_placements() -> None:
@@ -217,7 +218,7 @@ def test_spell_profile_has_more_enemy_damage_and_less_self_damage_than_troop() -
 def test_building_profile_has_lower_enemy_damage_than_troop_same_cost() -> None:
     env = CrLikeSimEnv()
     y = min(env.cfg.grid_h - 1, env.deploy_min_y + 1)
-    x = env.cfg.grid_w // 2
+    x = env._nearest_bridge_x(env.cfg.grid_w // 2)
     building_id = env.cfg.spell_card_count
     troop_id = 7
     assert env.get_card_meta(building_id).elixir_cost == env.get_card_meta(troop_id).elixir_cost
