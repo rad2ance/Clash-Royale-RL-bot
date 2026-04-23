@@ -13,7 +13,7 @@
 - Stateful active units:
   - troop/building spawns
   - TTL and HP decay
-  - simple ongoing pressure damage
+  - attack range + cooldown-based unit/tower attacks
   - closest-target duel logic
   - bridge-aware river crossing pathing
 - Visual debugging:
@@ -29,7 +29,7 @@
   - spell-specific areas/effects and timing windows
 - Board simulation fidelity:
   - unit collision and occupancy rules
-  - attack ranges, cooldowns, projectile travel, splash geometry
+  - projectile travel and splash geometry
   - exact tower targeting/retarget behavior
 - Pathing fidelity:
   - lane/path graph around bridges and towers

@@ -34,6 +34,9 @@ class SimConfig:
     enemy_spawn_chance: float = 0.08
     troop_lifetime_steps: int = 18
     building_lifetime_steps: int = 28
+    troop_attack_range_cells: int = 2
+    building_attack_range_cells: int = 4
+    attack_cooldown_steps: int = 3
 
 
 @dataclass(frozen=True)
@@ -58,6 +61,10 @@ class ActiveUnit:
     can_hit_air: bool
     is_air: bool
     is_enemy: bool
+    attack_range: int = 2
+    attack_cooldown_steps: int = 3
+    cooldown_remaining: int = 0
+    hit_damage: float = 1.0
 
 
 class CrLikeSimEnv(gym.Env):
@@ -257,25 +264,29 @@ class CrLikeSimEnv(gym.Env):
 
         return offense_mult, self_damage_mult, king_share
 
-    def _unit_profile(self, card: CardMeta, cost: float) -> tuple[float, float, int]:
+    def _unit_profile(self, card: CardMeta, cost: float) -> tuple[float, float, int, int, int, float]:
+        cooldown = max(1, int(self.cfg.attack_cooldown_steps))
         if card.card_type == "building":
             dps = 3.2 * cost
             hp = 32.0 * cost
             ttl = self.cfg.building_lifetime_steps
+            attack_range = self.cfg.building_attack_range_cells
         else:
             dps = 4.0 * cost
             hp = 18.0 * cost
             ttl = self.cfg.troop_lifetime_steps
+            attack_range = self.cfg.troop_attack_range_cells
         if card.can_hit_air:
             dps *= 1.08
         if card.target_type == "ground":
             hp *= 1.12
-        return dps, hp, ttl
+        hit_damage = dps * self.cfg.step_seconds * float(cooldown)
+        return dps, hp, ttl, int(attack_range), cooldown, float(hit_damage)
 
     def _spawn_friendly_unit(self, card: CardMeta, x: int, y: int, cost: float) -> None:
         if card.card_type == "spell":
             return
-        dps, hp, ttl = self._unit_profile(card, cost)
+        dps, hp, ttl, attack_range, cooldown, hit_damage = self._unit_profile(card, cost)
         self.own_units.append(
             ActiveUnit(
                 x=int(np.clip(x, 0, self.cfg.grid_w - 1)),
@@ -288,6 +299,10 @@ class CrLikeSimEnv(gym.Env):
                 can_hit_air=card.can_hit_air,
                 is_air=False,
                 is_enemy=False,
+                attack_range=attack_range,
+                attack_cooldown_steps=cooldown,
+                cooldown_remaining=0,
+                hit_damage=hit_damage,
             )
         )
 
@@ -309,6 +324,10 @@ class CrLikeSimEnv(gym.Env):
                 can_hit_air=False,
                 is_air=False,
                 is_enemy=True,
+                attack_range=self.cfg.troop_attack_range_cells,
+                attack_cooldown_steps=max(1, int(self.cfg.attack_cooldown_steps)),
+                cooldown_remaining=0,
+                hit_damage=float(3.8 * cost * self.cfg.step_seconds * max(1, int(self.cfg.attack_cooldown_steps))),
             )
         )
 
@@ -324,48 +343,66 @@ class CrLikeSimEnv(gym.Env):
         for target in candidates:
             if not self._can_target(attacker, target):
                 continue
-            if abs(attacker.x - target.x) <= 1 and abs(attacker.y - target.y) <= 2:
+            if abs(attacker.x - target.x) + abs(attacker.y - target.y) <= max(1, int(attacker.attack_range)):
                 in_range.append(target)
         if not in_range:
             return None
         return min(in_range, key=lambda u: (abs(attacker.x - u.x) + abs(attacker.y - u.y), u.hp))
 
-    def _process_unit_duels(self) -> None:
+    def _process_unit_duels(self) -> tuple[set[int], set[int]]:
+        attacked_own: set[int] = set()
+        attacked_enemy: set[int] = set()
         if not self.own_units or not self.enemy_units:
-            return
-        duel_scale = 3.0 * self.cfg.step_seconds
+            return attacked_own, attacked_enemy
         for own in self.own_units:
+            if own.cooldown_remaining > 0:
+                continue
             target = self._closest_target(own, self.enemy_units)
             if target is not None:
-                target.hp -= own.dps * duel_scale
+                target.hp -= own.hit_damage
+                own.cooldown_remaining = own.attack_cooldown_steps
+                attacked_own.add(id(own))
         for enemy in self.enemy_units:
+            if enemy.cooldown_remaining > 0:
+                continue
             target = self._closest_target(enemy, self.own_units)
             if target is not None:
-                target.hp -= enemy.dps * duel_scale
+                target.hp -= enemy.hit_damage
+                enemy.cooldown_remaining = enemy.attack_cooldown_steps
+                attacked_enemy.add(id(enemy))
+        return attacked_own, attacked_enemy
 
-    def _process_ongoing_unit_damage(self) -> tuple[float, float]:
+    def _in_enemy_tower_zone(self, unit: ActiveUnit) -> bool:
+        return unit.y <= self.river_top_y
+
+    def _in_own_tower_zone(self, unit: ActiveUnit) -> bool:
+        return unit.y >= self.river_bottom_y
+
+    def _process_tower_attacks(self, attacked_own: set[int], attacked_enemy: set[int]) -> tuple[float, float]:
         damage_to_enemy = 0.0
         damage_to_self = 0.0
         own_king_share = 0.55
         enemy_king_share = 0.55
 
         for unit in self.own_units:
-            forward_bias = 0.75 + 0.5 * ((self.cfg.grid_h - 1 - unit.y) / max(1, self.cfg.grid_h - 1))
-            pressure = unit.dps * self.cfg.step_seconds * forward_bias
+            if id(unit) in attacked_own or unit.cooldown_remaining > 0 or not self._in_enemy_tower_zone(unit):
+                continue
+            pressure = unit.hit_damage
             if unit.card_type == "building":
-                pressure *= 0.8
-            if unit.target_type == "ground":
-                pressure *= 0.92
+                pressure *= 0.75
             damage_to_enemy += pressure
             self.enemy_king_hp = max(0.0, self.enemy_king_hp - own_king_share * pressure)
             self.enemy_princess_hps -= (1.0 - own_king_share) * pressure
+            unit.cooldown_remaining = unit.attack_cooldown_steps
 
         for unit in self.enemy_units:
-            forward_bias = 0.75 + 0.5 * ((self.cfg.grid_h - 1 - unit.y) / max(1, self.cfg.grid_h - 1))
-            pressure = unit.dps * self.cfg.step_seconds * forward_bias
+            if id(unit) in attacked_enemy or unit.cooldown_remaining > 0 or not self._in_own_tower_zone(unit):
+                continue
+            pressure = unit.hit_damage
             damage_to_self += pressure
             self.own_king_hp = max(0.0, self.own_king_hp - enemy_king_share * pressure)
             self.own_princess_hps -= (1.0 - enemy_king_share) * pressure
+            unit.cooldown_remaining = unit.attack_cooldown_steps
 
         self.enemy_princess_hps = np.clip(self.enemy_princess_hps, 0.0, self.cfg.princess_hp)
         self.own_princess_hps = np.clip(self.own_princess_hps, 0.0, self.cfg.princess_hp)
@@ -373,8 +410,13 @@ class CrLikeSimEnv(gym.Env):
 
     def _advance_units(self) -> tuple[float, float]:
         self._spawn_enemy_unit()
-        self._process_unit_duels()
-        dmg_enemy, dmg_self = self._process_ongoing_unit_damage()
+        for unit in self.own_units:
+            unit.cooldown_remaining = max(0, unit.cooldown_remaining - 1)
+        for unit in self.enemy_units:
+            unit.cooldown_remaining = max(0, unit.cooldown_remaining - 1)
+
+        attacked_own, attacked_enemy = self._process_unit_duels()
+        dmg_enemy, dmg_self = self._process_tower_attacks(attacked_own, attacked_enemy)
 
         for unit in self.own_units:
             unit.ttl -= 1

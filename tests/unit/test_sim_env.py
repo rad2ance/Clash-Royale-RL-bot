@@ -280,7 +280,7 @@ def test_existing_friendly_unit_deals_ongoing_damage_on_noop() -> None:
     env.own_units = [
         ActiveUnit(
             x=env.cfg.grid_w // 2,
-            y=min(env.cfg.grid_h - 1, env.deploy_min_y + 2),
+            y=env.river_top_y,
             hp=50.0,
             dps=20.0,
             ttl=4,
@@ -289,11 +289,45 @@ def test_existing_friendly_unit_deals_ongoing_damage_on_noop() -> None:
             can_hit_air=True,
             is_air=False,
             is_enemy=False,
+            attack_range=2,
+            attack_cooldown_steps=2,
+            cooldown_remaining=0,
+            hit_damage=12.0,
         )
     ]
     _, _, _, _, info = env.step(env.noop_action)
     assert float(info["ongoing_damage_to_enemy"]) > 0.0
     assert float(env.enemy_king_hp) < start_enemy_hp
+
+
+def test_tower_attacks_respect_cooldown_steps() -> None:
+    env = CrLikeSimEnv(config=SimConfig(enemy_spawn_chance=0.0, attack_cooldown_steps=3))
+    env.reset(seed=0)
+    env.own_units = [
+        ActiveUnit(
+            x=env.cfg.grid_w // 2,
+            y=env.river_top_y,
+            hp=40.0,
+            dps=10.0,
+            ttl=8,
+            card_type="troop",
+            target_type="any",
+            can_hit_air=True,
+            is_air=False,
+            is_enemy=False,
+            attack_range=2,
+            attack_cooldown_steps=3,
+            cooldown_remaining=0,
+            hit_damage=20.0,
+        )
+    ]
+    hp0 = float(env.enemy_king_hp)
+    env.step(env.noop_action)
+    hp1 = float(env.enemy_king_hp)
+    env.step(env.noop_action)
+    hp2 = float(env.enemy_king_hp)
+    assert hp1 < hp0
+    assert hp2 == hp1
 
 
 def test_friendly_troop_advances_toward_enemy_side() -> None:
