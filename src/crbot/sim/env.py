@@ -104,6 +104,36 @@ class CrLikeSimEnv(gym.Env):
         y = rem // self.cfg.grid_w
         return slot, x, y
 
+    def get_legal_action_mask(self) -> np.ndarray:
+        """
+        Return a boolean mask over the discrete action space.
+
+        Action 0 (noop) is always legal. Card-placement actions are legal only
+        when their hand slot can be afforded with the current elixir.
+        """
+        mask = np.zeros(self.n_actions, dtype=bool)
+        mask[self.noop_action] = True
+        affordable_slots = self.hand_costs <= (self.elixir + 1e-6)
+        for slot in range(self.cfg.hand_size):
+            if not affordable_slots[slot]:
+                continue
+            start = 1 + slot * self.actions_per_card
+            stop = start + self.actions_per_card
+            mask[start:stop] = True
+        return mask
+
+    def is_action_legal(self, action: int) -> bool:
+        if action < 0 or action >= self.n_actions:
+            return False
+        return bool(self.get_legal_action_mask()[action])
+
+    def sample_legal_action(self) -> int:
+        mask = self.get_legal_action_mask()
+        legal = np.flatnonzero(mask)
+        if legal.size == 0:
+            return self.noop_action
+        return int(self.rng.choice(legal))
+
     def _alive(self) -> bool:
         return (
             self.own_king_hp > 0.0
@@ -123,43 +153,38 @@ class CrLikeSimEnv(gym.Env):
         self.own_princess_hps[:] = self.cfg.princess_hp
         self.enemy_princess_hps[:] = self.cfg.princess_hp
         self._draw_initial_hand()
-        return self._get_obs(), {}
+        return self._get_obs(), {"legal_action_mask": self.get_legal_action_mask()}
 
     def step(self, action: int):
-        decoded = self._decode_action(int(action))
-        legal_action = True
+        action_i = int(action)
+        decoded = self._decode_action(action_i)
+        legal_action = self.is_action_legal(action_i)
         spent_elixir = 0.0
         damage_to_enemy = 0.0
         damage_to_self = 0.0
 
-        if decoded is not None:
+        if legal_action and decoded is not None:
             slot, x, y = decoded
-            if slot < 0 or slot >= self.cfg.hand_size:
-                legal_action = False
-            else:
-                cost = float(self.hand_costs[slot])
-                if self.elixir + 1e-6 < cost:
-                    legal_action = False
-                else:
-                    spent_elixir = cost
-                    self.elixir = max(0.0, self.elixir - cost)
-                    board_factor = 1.0 - abs((x / max(1, self.cfg.grid_w - 1)) - 0.5)
-                    range_factor = 0.7 + 0.6 * (y / max(1, self.cfg.grid_h - 1))
+            cost = float(self.hand_costs[slot])
+            spent_elixir = cost
+            self.elixir = max(0.0, self.elixir - cost)
+            board_factor = 1.0 - abs((x / max(1, self.cfg.grid_w - 1)) - 0.5)
+            range_factor = 0.7 + 0.6 * (y / max(1, self.cfg.grid_h - 1))
 
-                    damage_to_enemy = float((8.0 + 5.0 * cost) * board_factor * range_factor)
-                    enemy_chip = self.rng.uniform(0.8, 1.2)
-                    damage_to_enemy *= enemy_chip
-                    damage_to_self = float(self.rng.uniform(0.0, 3.5) * cost)
+            damage_to_enemy = float((8.0 + 5.0 * cost) * board_factor * range_factor)
+            enemy_chip = self.rng.uniform(0.8, 1.2)
+            damage_to_enemy *= enemy_chip
+            damage_to_self = float(self.rng.uniform(0.0, 3.5) * cost)
 
-                    self.enemy_king_hp = max(0.0, self.enemy_king_hp - 0.55 * damage_to_enemy)
-                    self.enemy_princess_hps -= 0.45 * damage_to_enemy
-                    self.enemy_princess_hps = np.clip(self.enemy_princess_hps, 0.0, self.cfg.princess_hp)
+            self.enemy_king_hp = max(0.0, self.enemy_king_hp - 0.55 * damage_to_enemy)
+            self.enemy_princess_hps -= 0.45 * damage_to_enemy
+            self.enemy_princess_hps = np.clip(self.enemy_princess_hps, 0.0, self.cfg.princess_hp)
 
-                    self.own_king_hp = max(0.0, self.own_king_hp - 0.55 * damage_to_self)
-                    self.own_princess_hps -= 0.45 * damage_to_self
-                    self.own_princess_hps = np.clip(self.own_princess_hps, 0.0, self.cfg.princess_hp)
+            self.own_king_hp = max(0.0, self.own_king_hp - 0.55 * damage_to_self)
+            self.own_princess_hps -= 0.45 * damage_to_self
+            self.own_princess_hps = np.clip(self.own_princess_hps, 0.0, self.cfg.princess_hp)
 
-                    self._draw_replacement_card(slot)
+            self._draw_replacement_card(slot)
 
         if not legal_action:
             damage_to_self += 2.0
@@ -192,6 +217,7 @@ class CrLikeSimEnv(gym.Env):
             "damage_to_enemy": damage_to_enemy,
             "damage_to_self": damage_to_self,
             "decoded_action": decoded,
+            "legal_action_mask": self.get_legal_action_mask(),
         }
         return self._get_obs(), float(reward), terminated, truncated, info
 
@@ -200,4 +226,3 @@ def flatten_observation(obs: dict[str, np.ndarray]) -> np.ndarray:
     """Convert dict observation into flat vector for simple MLP policies."""
     parts = [obs["global"].ravel(), obs["hand_ids"].ravel(), obs["hand_costs"].ravel()]
     return np.concatenate(parts, axis=0).astype(np.float32)
-

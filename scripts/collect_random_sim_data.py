@@ -9,7 +9,7 @@ from crbot.data import EpisodeBatch, save_episode
 from crbot.sim import CrLikeSimEnv, flatten_observation
 
 
-def collect_episode(env: CrLikeSimEnv, max_steps: int) -> EpisodeBatch:
+def collect_episode(env: CrLikeSimEnv, max_steps: int, allow_illegal_actions: bool = False) -> EpisodeBatch:
     obs, _ = env.reset()
     obs_buf: list[np.ndarray] = []
     act_buf: list[int] = []
@@ -18,7 +18,10 @@ def collect_episode(env: CrLikeSimEnv, max_steps: int) -> EpisodeBatch:
 
     for _ in range(max_steps):
         flat = flatten_observation(obs)
-        action = int(env.action_space.sample())
+        if allow_illegal_actions:
+            action = int(env.action_space.sample())
+        else:
+            action = env.sample_legal_action()
         next_obs, reward, terminated, truncated, _ = env.step(action)
 
         obs_buf.append(flat)
@@ -43,6 +46,11 @@ def main() -> None:
     parser.add_argument("--episodes", type=int, default=100)
     parser.add_argument("--max-steps", type=int, default=900)
     parser.add_argument("--out", type=str, default="data/sim_random")
+    parser.add_argument(
+        "--allow-illegal-actions",
+        action="store_true",
+        help="Sample uniformly from all actions instead of only currently legal actions.",
+    )
     args = parser.parse_args()
 
     out_dir = Path(args.out)
@@ -50,7 +58,7 @@ def main() -> None:
 
     env = CrLikeSimEnv()
     for i in range(args.episodes):
-        ep = collect_episode(env, max_steps=args.max_steps)
+        ep = collect_episode(env, max_steps=args.max_steps, allow_illegal_actions=args.allow_illegal_actions)
         save_episode(out_dir / f"episode_{i:05d}.npz", ep)
         if (i + 1) % 20 == 0:
             print(f"[collect] saved {i + 1}/{args.episodes} episodes")
@@ -60,4 +68,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

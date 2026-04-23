@@ -23,6 +23,13 @@ Generate random trajectories from the simulator:
 python scripts/collect_random_sim_data.py --episodes 200 --out data/sim_random
 ```
 
+By default, random collection now samples only legal actions. To intentionally
+sample from all actions (including illegal ones), pass:
+
+```powershell
+python scripts/collect_random_sim_data.py --episodes 200 --out data/sim_random --allow-illegal-actions
+```
+
 Train behavior cloning on the generated trajectories:
 
 ```powershell
@@ -70,7 +77,7 @@ tests/unit/                      lightweight tests
 
 1. Replace heuristic `CrLikeSimEnv` combat with card-specific dynamics.
 2. Add visual state extraction from emulator screenshots.
-3. Add action masking for invalid placements and unavailable cards.
+3. Expand action masking from elixir/card availability into placement legality constraints.
 4. Replace random data collection with human/heuristic trajectories.
 
 ## Real-play data notes
