@@ -31,6 +31,9 @@ class SimConfig:
     # Building placements are constrained to lanes near bridges.
     bridge_xs: tuple[int, ...] = (2, 5)
     bridge_lane_half_width: int = 1
+    enemy_spawn_chance: float = 0.08
+    troop_lifetime_steps: int = 18
+    building_lifetime_steps: int = 28
 
 
 @dataclass(frozen=True)
@@ -41,6 +44,18 @@ class CardMeta:
     card_type: str  # "spell" | "building" | "troop"
     target_type: str  # "ground" | "air" | "any" | "area"
     can_hit_air: bool
+
+
+@dataclass
+class ActiveUnit:
+    x: int
+    y: int
+    hp: float
+    dps: float
+    ttl: int
+    card_type: str
+    target_type: str
+    is_enemy: bool
 
 
 class CrLikeSimEnv(gym.Env):
@@ -92,6 +107,8 @@ class CrLikeSimEnv(gym.Env):
         self.enemy_princess_hps = np.full(2, self.cfg.princess_hp, dtype=np.float32)
         self.hand_ids = np.zeros(self.cfg.hand_size, dtype=np.int32)
         self.hand_costs = np.zeros(self.cfg.hand_size, dtype=np.float32)
+        self.own_units: list[ActiveUnit] = []
+        self.enemy_units: list[ActiveUnit] = []
         self._last_decoded_action: tuple[int, int, int] | None = None
         self._draw_initial_hand()
 
@@ -232,6 +249,112 @@ class CrLikeSimEnv(gym.Env):
 
         return offense_mult, self_damage_mult, king_share
 
+    def _unit_profile(self, card: CardMeta, cost: float) -> tuple[float, float, int]:
+        if card.card_type == "building":
+            dps = 3.2 * cost
+            hp = 32.0 * cost
+            ttl = self.cfg.building_lifetime_steps
+        else:
+            dps = 4.0 * cost
+            hp = 18.0 * cost
+            ttl = self.cfg.troop_lifetime_steps
+        if card.can_hit_air:
+            dps *= 1.08
+        if card.target_type == "ground":
+            hp *= 1.12
+        return dps, hp, ttl
+
+    def _spawn_friendly_unit(self, card: CardMeta, x: int, y: int, cost: float) -> None:
+        if card.card_type == "spell":
+            return
+        dps, hp, ttl = self._unit_profile(card, cost)
+        self.own_units.append(
+            ActiveUnit(
+                x=int(np.clip(x, 0, self.cfg.grid_w - 1)),
+                y=int(np.clip(y, 0, self.cfg.grid_h - 1)),
+                hp=float(hp),
+                dps=float(dps),
+                ttl=int(ttl),
+                card_type=card.card_type,
+                target_type=card.target_type,
+                is_enemy=False,
+            )
+        )
+
+    def _spawn_enemy_unit(self) -> None:
+        if self.rng.uniform() >= self.cfg.enemy_spawn_chance:
+            return
+        x = int(self.rng.integers(0, self.cfg.grid_w))
+        y = int(self.rng.integers(0, max(1, self.deploy_min_y - 1)))
+        cost = float(self.rng.integers(2, 6))
+        self.enemy_units.append(
+            ActiveUnit(
+                x=x,
+                y=y,
+                hp=16.0 * cost,
+                dps=3.8 * cost,
+                ttl=max(6, int(self.cfg.troop_lifetime_steps * 0.7)),
+                card_type="troop",
+                target_type="ground",
+                is_enemy=True,
+            )
+        )
+
+    def _process_unit_duels(self) -> None:
+        if not self.own_units or not self.enemy_units:
+            return
+        duel_scale = 3.0 * self.cfg.step_seconds
+        for own in self.own_units:
+            for enemy in self.enemy_units:
+                if abs(own.x - enemy.x) <= 1 and abs(own.y - enemy.y) <= 2:
+                    own.hp -= enemy.dps * duel_scale
+                    enemy.hp -= own.dps * duel_scale
+
+    def _process_ongoing_unit_damage(self) -> tuple[float, float]:
+        damage_to_enemy = 0.0
+        damage_to_self = 0.0
+        own_king_share = 0.55
+        enemy_king_share = 0.55
+
+        for unit in self.own_units:
+            forward_bias = 0.75 + 0.5 * (unit.y / max(1, self.cfg.grid_h - 1))
+            pressure = unit.dps * self.cfg.step_seconds * forward_bias
+            if unit.card_type == "building":
+                pressure *= 0.8
+            if unit.target_type == "ground":
+                pressure *= 0.92
+            damage_to_enemy += pressure
+            self.enemy_king_hp = max(0.0, self.enemy_king_hp - own_king_share * pressure)
+            self.enemy_princess_hps -= (1.0 - own_king_share) * pressure
+
+        for unit in self.enemy_units:
+            forward_bias = 0.75 + 0.5 * ((self.cfg.grid_h - 1 - unit.y) / max(1, self.cfg.grid_h - 1))
+            pressure = unit.dps * self.cfg.step_seconds * forward_bias
+            damage_to_self += pressure
+            self.own_king_hp = max(0.0, self.own_king_hp - enemy_king_share * pressure)
+            self.own_princess_hps -= (1.0 - enemy_king_share) * pressure
+
+        self.enemy_princess_hps = np.clip(self.enemy_princess_hps, 0.0, self.cfg.princess_hp)
+        self.own_princess_hps = np.clip(self.own_princess_hps, 0.0, self.cfg.princess_hp)
+        return float(damage_to_enemy), float(damage_to_self)
+
+    def _advance_units(self) -> tuple[float, float]:
+        self._spawn_enemy_unit()
+        self._process_unit_duels()
+        dmg_enemy, dmg_self = self._process_ongoing_unit_damage()
+
+        for unit in self.own_units:
+            unit.ttl -= 1
+            unit.hp -= 0.2
+        for unit in self.enemy_units:
+            unit.ttl -= 1
+            unit.hp -= 0.2
+            unit.y = min(self.cfg.grid_h - 1, unit.y + 1)
+
+        self.own_units = [u for u in self.own_units if u.ttl > 0 and u.hp > 0.0]
+        self.enemy_units = [u for u in self.enemy_units if u.ttl > 0 and u.hp > 0.0]
+        return dmg_enemy, dmg_self
+
     def get_legal_action_mask(self) -> np.ndarray:
         """
         Return a boolean mask over the discrete action space.
@@ -309,6 +432,8 @@ class CrLikeSimEnv(gym.Env):
         self.own_princess_hps[:] = self.cfg.princess_hp
         self.enemy_princess_hps[:] = self.cfg.princess_hp
         self._draw_initial_hand()
+        self.own_units = []
+        self.enemy_units = []
         self._last_decoded_action = None
         return self._get_obs(), {"legal_action_mask": self.get_legal_action_mask()}
 
@@ -348,11 +473,16 @@ class CrLikeSimEnv(gym.Env):
             self.own_princess_hps -= 0.45 * damage_to_self
             self.own_princess_hps = np.clip(self.own_princess_hps, 0.0, self.cfg.princess_hp)
 
+            self._spawn_friendly_unit(card=card, x=x, y=y, cost=cost)
             self._draw_replacement_card(slot)
 
         if not legal_action:
             damage_to_self += 2.0
             self.own_king_hp = max(0.0, self.own_king_hp - 1.0)
+
+        ongoing_enemy, ongoing_self = self._advance_units()
+        damage_to_enemy += ongoing_enemy
+        damage_to_self += ongoing_self
 
         self.elixir = min(self.cfg.max_elixir, self.elixir + self.cfg.elixir_regen_per_step)
         self.time_left = max(0.0, self.time_left - self.cfg.step_seconds)
@@ -384,6 +514,10 @@ class CrLikeSimEnv(gym.Env):
             "decoded_action": decoded,
             "legal_action_mask": self.get_legal_action_mask(),
             "card_type": played_card_type,
+            "ongoing_damage_to_enemy": ongoing_enemy,
+            "ongoing_damage_to_self": ongoing_self,
+            "own_active_units": len(self.own_units),
+            "enemy_active_units": len(self.enemy_units),
         }
         return self._get_obs(), float(reward), terminated, truncated, info
 
@@ -449,6 +583,20 @@ class CrLikeSimEnv(gym.Env):
             cy0 = y0 + ay * cell + 3
             cy1 = min(y1, y0 + (ay + 1) * cell - 3)
             img[cy0:cy1, cx0:cx1, :] = np.array([255, 82, 82], dtype=np.uint8)
+
+        # Active unit markers.
+        for unit in self.own_units:
+            ux0 = unit.x * cell + 5
+            ux1 = min(width, (unit.x + 1) * cell - 5)
+            uy0 = y0 + unit.y * cell + 5
+            uy1 = min(y1, y0 + (unit.y + 1) * cell - 5)
+            img[uy0:uy1, ux0:ux1, :] = np.array([88, 232, 124], dtype=np.uint8)
+        for unit in self.enemy_units:
+            ux0 = unit.x * cell + 5
+            ux1 = min(width, (unit.x + 1) * cell - 5)
+            uy0 = y0 + unit.y * cell + 5
+            uy1 = min(y1, y0 + (unit.y + 1) * cell - 5)
+            img[uy0:uy1, ux0:ux1, :] = np.array([255, 124, 104], dtype=np.uint8)
 
         # Simple tower HP bars.
         own_hp = np.clip(self.own_king_hp / max(self.cfg.king_hp, 1e-6), 0.0, 1.0)

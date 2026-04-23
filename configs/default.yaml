@@ -18,6 +18,9 @@ sim:
   river_bottom_y: null
   bridge_xs: [2, 5]
   bridge_lane_half_width: 1
+  enemy_spawn_chance: 0.08
+  troop_lifetime_steps: 18
+  building_lifetime_steps: 28
 
 bc:
   epochs: 10

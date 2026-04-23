@@ -1,6 +1,6 @@
 import numpy as np
 
-from crbot.sim import CrLikeSimEnv, flatten_observation
+from crbot.sim import ActiveUnit, CrLikeSimEnv, SimConfig, flatten_observation
 
 
 def test_env_reset_and_step_shapes() -> None:
@@ -23,6 +23,10 @@ def test_env_reset_and_step_shapes() -> None:
     assert "legal_action" in step_info
     assert "illegal_reason" in step_info
     assert "card_type" in step_info
+    assert "ongoing_damage_to_enemy" in step_info
+    assert "ongoing_damage_to_self" in step_info
+    assert "own_active_units" in step_info
+    assert "enemy_active_units" in step_info
     assert "legal_action_mask" in step_info
     assert step_info["legal_action_mask"].shape == (env.n_actions,)
 
@@ -233,3 +237,58 @@ def test_render_returns_rgb_array() -> None:
     assert frame.ndim == 3
     assert frame.shape[2] == 3
     assert frame.dtype == np.uint8
+
+
+def test_troop_play_spawns_friendly_active_unit() -> None:
+    env = CrLikeSimEnv(config=SimConfig(enemy_spawn_chance=0.0))
+    env.reset(seed=0)
+    env.elixir = env.cfg.max_elixir
+    troop_id = env.cfg.spell_card_count + env.cfg.building_card_count + 1
+    env.hand_ids[:] = np.array([troop_id, troop_id, troop_id, troop_id], dtype=np.int32)
+    env._sync_hand_costs_from_ids()
+
+    y = min(env.cfg.grid_h - 1, env.deploy_min_y + 1)
+    x = env.cfg.grid_w // 2
+    action = 1 + y * env.cfg.grid_w + x
+    _, _, _, _, info = env.step(action)
+
+    assert info["legal_action"] is True
+    assert int(info["own_active_units"]) >= 1
+
+
+def test_spell_play_does_not_spawn_friendly_unit() -> None:
+    env = CrLikeSimEnv(config=SimConfig(enemy_spawn_chance=0.0))
+    env.reset(seed=0)
+    env.elixir = env.cfg.max_elixir
+    spell_id = 0
+    env.hand_ids[:] = np.array([spell_id, spell_id, spell_id, spell_id], dtype=np.int32)
+    env._sync_hand_costs_from_ids()
+
+    y = max(0, env.deploy_min_y - 1)
+    x = env.cfg.grid_w // 2
+    action = 1 + y * env.cfg.grid_w + x
+    _, _, _, _, info = env.step(action)
+
+    assert info["legal_action"] is True
+    assert int(info["own_active_units"]) == 0
+
+
+def test_existing_friendly_unit_deals_ongoing_damage_on_noop() -> None:
+    env = CrLikeSimEnv(config=SimConfig(enemy_spawn_chance=0.0))
+    env.reset(seed=0)
+    start_enemy_hp = float(env.enemy_king_hp)
+    env.own_units = [
+        ActiveUnit(
+            x=env.cfg.grid_w // 2,
+            y=min(env.cfg.grid_h - 1, env.deploy_min_y + 2),
+            hp=50.0,
+            dps=20.0,
+            ttl=4,
+            card_type="troop",
+            target_type="any",
+            is_enemy=False,
+        )
+    ]
+    _, _, _, _, info = env.step(env.noop_action)
+    assert float(info["ongoing_damage_to_enemy"]) > 0.0
+    assert float(env.enemy_king_hp) < start_enemy_hp
