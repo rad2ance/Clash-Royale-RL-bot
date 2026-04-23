@@ -29,7 +29,7 @@ class SimConfig:
     river_top_y: int | None = None
     river_bottom_y: int | None = None
     # Building placements are constrained to lanes near bridges.
-    bridge_xs: tuple[int, ...] = (2, 6)
+    bridge_xs: tuple[int, ...] = (1, 7)
     bridge_lane_half_width: int = 0
     enemy_spawn_chance: float = 0.08
     troop_lifetime_steps: int = 18

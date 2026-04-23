@@ -16,7 +16,7 @@ sim:
   deploy_min_y: null
   river_top_y: null
   river_bottom_y: null
-  bridge_xs: [2, 6]
+  bridge_xs: [1, 7]
   bridge_lane_half_width: 0
   enemy_spawn_chance: 0.08
   troop_lifetime_steps: 18
