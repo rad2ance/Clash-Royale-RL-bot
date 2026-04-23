@@ -107,7 +107,12 @@ class CrLikeSimEnv(gym.Env):
         self.grid_size = self.cfg.grid_w * self.cfg.grid_h
         self.actions_per_card = self.grid_size
         self.n_actions = 1 + self.cfg.hand_size * self.actions_per_card
-        self.deploy_min_y = self.cfg.deploy_min_y if self.cfg.deploy_min_y is not None else self.cfg.grid_h // 2
+        if self.cfg.deploy_min_y is not None:
+            self.deploy_min_y = self.cfg.deploy_min_y
+        else:
+            # For odd-height boards, reserve the exact middle row as river so
+            # both sides have equal playable depth.
+            self.deploy_min_y = (self.cfg.grid_h // 2) + (self.cfg.grid_h % 2)
         default_river_top = max(0, self.deploy_min_y - 1)
         self.river_top_y = self.cfg.river_top_y if self.cfg.river_top_y is not None else default_river_top
         self.river_bottom_y = (
