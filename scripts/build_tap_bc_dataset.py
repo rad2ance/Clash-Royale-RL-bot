@@ -12,8 +12,8 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Build BC episodes from recorded emulator sessions.")
     parser.add_argument("--recordings-dir", type=str, default="recordings")
     parser.add_argument("--out", type=str, default="data/il_tap")
-    parser.add_argument("--grid-w", type=int, default=8)
-    parser.add_argument("--grid-h", type=int, default=14)
+    parser.add_argument("--grid-w", type=int, default=9)
+    parser.add_argument("--grid-h", type=int, default=15)
     parser.add_argument("--hand-size", type=int, default=4)
     parser.add_argument("--resize-w", type=int, default=96)
     parser.add_argument("--resize-h", type=int, default=54)
@@ -69,4 +69,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

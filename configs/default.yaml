@@ -11,12 +11,12 @@ sim:
   n_cards: 12
   spell_card_count: 3
   building_card_count: 2
-  grid_w: 8
-  grid_h: 14
+  grid_w: 9
+  grid_h: 15
   deploy_min_y: null
   river_top_y: null
   river_bottom_y: null
-  bridge_xs: [2, 5]
+  bridge_xs: [2, 6]
   bridge_lane_half_width: 0
   enemy_spawn_chance: 0.08
   troop_lifetime_steps: 18

@@ -20,8 +20,8 @@ class SimConfig:
     n_cards: int = 12
     spell_card_count: int = 3
     building_card_count: int = 2
-    grid_w: int = 8
-    grid_h: int = 14
+    grid_w: int = 9
+    grid_h: int = 15
     # Actions can only deploy on the player's side of the arena.
     # With y=0 at top and y increasing downward, this defaults to bottom half.
     deploy_min_y: int | None = None
@@ -29,7 +29,7 @@ class SimConfig:
     river_top_y: int | None = None
     river_bottom_y: int | None = None
     # Building placements are constrained to lanes near bridges.
-    bridge_xs: tuple[int, ...] = (2, 5)
+    bridge_xs: tuple[int, ...] = (2, 6)
     bridge_lane_half_width: int = 0
     enemy_spawn_chance: float = 0.08
     troop_lifetime_steps: int = 18
@@ -111,7 +111,7 @@ class CrLikeSimEnv(gym.Env):
         default_river_top = max(0, self.deploy_min_y - 1)
         self.river_top_y = self.cfg.river_top_y if self.cfg.river_top_y is not None else default_river_top
         self.river_bottom_y = (
-            self.cfg.river_bottom_y if self.cfg.river_bottom_y is not None else min(self.cfg.grid_h - 1, self.deploy_min_y)
+            self.cfg.river_bottom_y if self.cfg.river_bottom_y is not None else default_river_top
         )
         self.card_catalog = self._build_default_card_catalog()
 
