@@ -86,6 +86,12 @@ python scripts/compare_eval_runs.py --glob "data/eval/*.json" --sort-by mean_rew
 python scripts/compare_eval_runs.py --glob "data/eval/*.json" --sort-by win_rate --csv-out data/eval/compare.csv
 ```
 
+Benchmark simulator throughput across resolution presets:
+
+```powershell
+python scripts/benchmark_sim_throughput.py --episodes 30 --max-steps 300 --out data/eval/sim_throughput.json
+```
+
 Visualize a simulator episode as GIF:
 
 ```powershell
