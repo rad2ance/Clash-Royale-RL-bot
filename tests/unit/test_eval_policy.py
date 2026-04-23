@@ -2,6 +2,9 @@ import importlib.util
 import sys
 from pathlib import Path
 
+import numpy as np
+import torch
+
 
 def _load_eval_module():
     script_path = Path(__file__).resolve().parents[2] / "scripts" / "eval_policy.py"
@@ -28,3 +31,22 @@ def test_summarize_outputs_expected_rates() -> None:
     assert abs(out["win_rate"] - (1.0 / 3.0)) < 1e-6
     assert abs(out["loss_rate"] - (1.0 / 3.0)) < 1e-6
     assert abs(out["draw_rate"] - (1.0 / 3.0)) < 1e-6
+
+
+def test_action_from_bc_masked_ignores_illegal_best_logit() -> None:
+    module = _load_eval_module()
+
+    class DummyModel(torch.nn.Module):
+        def forward(self, x):  # noqa: D401
+            _ = x
+            return torch.tensor([[0.1, 9.0, 0.2, 5.0, 0.0]], dtype=torch.float32)
+
+    model = DummyModel()
+    obs = {
+        "global": np.zeros(8, dtype=np.float32),
+        "hand_ids": np.zeros(4, dtype=np.float32),
+        "hand_costs": np.zeros(4, dtype=np.float32),
+    }
+    mask = np.array([True, False, True, True, True], dtype=bool)
+    action = module.action_from_bc_masked(model, obs, mask, device="cpu")
+    assert action == 3

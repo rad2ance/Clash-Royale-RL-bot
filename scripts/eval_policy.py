@@ -54,6 +54,16 @@ def action_from_bc(model: BcPolicy, obs: dict[str, np.ndarray], device: str) -> 
     return action
 
 
+def action_from_bc_masked(model: BcPolicy, obs: dict[str, np.ndarray], mask: np.ndarray, device: str) -> int:
+    x = torch.from_numpy(flatten_observation(obs)).unsqueeze(0).to(device)
+    m = torch.from_numpy(mask.astype(bool)).unsqueeze(0).to(device)
+    with torch.no_grad():
+        logits = model(x)
+        logits = logits.masked_fill(~m, -1e9)
+        action = int(torch.argmax(logits, dim=1).item())
+    return action
+
+
 def eval_random(episodes: int, max_steps: int, seed: int) -> list[EpisodeEval]:
     env = CrLikeSimEnv(seed=seed)
     records: list[EpisodeEval] = []
@@ -76,7 +86,7 @@ def eval_random(episodes: int, max_steps: int, seed: int) -> list[EpisodeEval]:
     return records
 
 
-def eval_bc(checkpoint: str, episodes: int, max_steps: int, seed: int) -> list[EpisodeEval]:
+def eval_bc(checkpoint: str, episodes: int, max_steps: int, seed: int, masked: bool) -> list[EpisodeEval]:
     device = "cuda" if torch.cuda.is_available() else "cpu"
     payload = torch.load(checkpoint, map_location=device)
     model = BcPolicy(
@@ -95,7 +105,10 @@ def eval_bc(checkpoint: str, episodes: int, max_steps: int, seed: int) -> list[E
         illegal = 0
         steps = 0
         while steps < max_steps:
-            action = action_from_bc(model, obs, device)
+            if masked:
+                action = action_from_bc_masked(model, obs, env.get_legal_action_mask(), device)
+            else:
+                action = action_from_bc(model, obs, device)
             obs, reward, terminated, truncated, info = env.step(action)
             total_reward += float(reward)
             illegal += 0 if bool(info.get("legal_action", True)) else 1
@@ -146,7 +159,7 @@ def eval_ppo(checkpoint: str, episodes: int, max_steps: int, seed: int, masked: 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Evaluate policy checkpoints on CR-like simulator.")
-    parser.add_argument("--policy", choices=["random", "bc", "ppo", "ppo-mask"], default="random")
+    parser.add_argument("--policy", choices=["random", "bc", "bc-mask", "ppo", "ppo-mask"], default="random")
     parser.add_argument("--checkpoint", type=str, default="", help="Path to model checkpoint for bc/ppo variants.")
     parser.add_argument("--episodes", type=int, default=20)
     parser.add_argument("--max-steps", type=int, default=900)
@@ -160,7 +173,9 @@ def main() -> None:
     if args.policy == "random":
         records = eval_random(args.episodes, args.max_steps, args.seed)
     elif args.policy == "bc":
-        records = eval_bc(args.checkpoint, args.episodes, args.max_steps, args.seed)
+        records = eval_bc(args.checkpoint, args.episodes, args.max_steps, args.seed, masked=False)
+    elif args.policy == "bc-mask":
+        records = eval_bc(args.checkpoint, args.episodes, args.max_steps, args.seed, masked=True)
     elif args.policy == "ppo":
         records = eval_ppo(args.checkpoint, args.episodes, args.max_steps, args.seed, masked=False)
     else:

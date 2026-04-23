@@ -74,6 +74,7 @@ Evaluate a policy and save JSON metrics:
 
 ```powershell
 python scripts/eval_policy.py --policy random --episodes 20 --out data/eval/random_eval.json
+python scripts/eval_policy.py --policy bc-mask --checkpoint checkpoints/bc_sim_masked.pt --episodes 20 --out data/eval/bc_mask_eval.json
 python scripts/eval_policy.py --policy ppo --checkpoint checkpoints/ppo_sim.zip --episodes 20 --out data/eval/ppo_eval.json
 python scripts/eval_policy.py --policy ppo-mask --checkpoint checkpoints/ppo_sim_masked.zip --episodes 20 --out data/eval/ppo_mask_eval.json
 ```
