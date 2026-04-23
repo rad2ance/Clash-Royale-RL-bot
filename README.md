@@ -94,3 +94,22 @@ tests/unit/                      lightweight tests
   - tap in hand slot, then
   - tap in arena within a short timeout.
 - The resulting action encoding matches the simulator's discrete action format.
+
+## Project workflow
+
+- Roadmap: `docs/ROADMAP.md`
+- Backlog: `docs/BACKLOG.md`
+- GitHub issue templates live under `.github/ISSUE_TEMPLATE/`
+
+Bootstrap labels + starter issues (dry-run by default):
+
+```powershell
+python scripts/bootstrap_github_workflow.py
+```
+
+Apply remotely:
+
+```powershell
+$env:GITHUB_TOKEN="YOUR_TOKEN"
+python scripts/bootstrap_github_workflow.py --apply
+```
