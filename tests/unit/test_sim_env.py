@@ -21,6 +21,7 @@ def test_env_reset_and_step_shapes() -> None:
     assert isinstance(terminated, bool)
     assert isinstance(truncated, bool)
     assert "legal_action" in step_info
+    assert "illegal_reason" in step_info
     assert "legal_action_mask" in step_info
     assert step_info["legal_action_mask"].shape == (env.n_actions,)
 
@@ -70,7 +71,7 @@ def test_legal_action_mask_enforces_deploy_side() -> None:
 
     slot = 0
     top_y = max(0, env.deploy_min_y - 1)
-    bottom_y = min(env.cfg.grid_h - 1, env.deploy_min_y)
+    bottom_y = min(env.cfg.grid_h - 1, env.deploy_min_y + 1)
     x = env.cfg.grid_w // 2
 
     top_action = 1 + slot * env.actions_per_card + top_y * env.cfg.grid_w + x
@@ -109,7 +110,7 @@ def test_building_cards_are_center_lane_constrained() -> None:
     env.hand_costs[:] = np.array([1.0, 1.0, 1.0, 1.0], dtype=np.float32)
 
     slot = 0
-    y = env.deploy_min_y
+    y = min(env.cfg.grid_h - 1, env.deploy_min_y + 1)
     edge_x = 0
     center_x = env.cfg.grid_w // 2
     edge_action = 1 + slot * env.actions_per_card + y * env.cfg.grid_w + edge_x
@@ -117,3 +118,32 @@ def test_building_cards_are_center_lane_constrained() -> None:
 
     assert env.is_action_legal(edge_action) is False
     assert env.is_action_legal(center_action) is True
+
+
+def test_river_rows_block_non_spell_placements() -> None:
+    env = CrLikeSimEnv()
+    env.reset(seed=0)
+    env.elixir = env.cfg.max_elixir
+    troop_id = env.cfg.spell_card_count + env.cfg.building_card_count + 1
+    env.hand_ids[:] = np.array([troop_id, troop_id, troop_id, troop_id], dtype=np.int32)
+    env.hand_costs[:] = np.array([1.0, 1.0, 1.0, 1.0], dtype=np.float32)
+
+    slot = 0
+    x = env.cfg.grid_w // 2
+    river_y = env.river_bottom_y
+    action = 1 + slot * env.actions_per_card + river_y * env.cfg.grid_w + x
+    assert env.is_action_legal(action) is False
+
+
+def test_spell_can_target_river_rows() -> None:
+    env = CrLikeSimEnv()
+    env.reset(seed=0)
+    env.elixir = env.cfg.max_elixir
+    env.hand_ids[:] = np.array([0, 0, 0, 0], dtype=np.int32)
+    env.hand_costs[:] = np.array([1.0, 1.0, 1.0, 1.0], dtype=np.float32)
+
+    slot = 0
+    x = env.cfg.grid_w // 2
+    river_y = env.river_top_y
+    action = 1 + slot * env.actions_per_card + river_y * env.cfg.grid_w + x
+    assert env.is_action_legal(action) is True

@@ -9,8 +9,15 @@ sim:
   elixir_regen_per_step: 0.1
   hand_size: 4
   n_cards: 12
+  spell_card_count: 3
+  building_card_count: 2
   grid_w: 8
   grid_h: 14
+  deploy_min_y: null
+  river_top_y: null
+  river_bottom_y: null
+  bridge_xs: [2, 5]
+  bridge_lane_half_width: 1
 
 bc:
   epochs: 10
@@ -27,4 +34,3 @@ emulator:
   host: "127.0.0.1"
   port: 5555
   adb_path: "adb"
-
