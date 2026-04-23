@@ -2,6 +2,7 @@
 
 ## Implemented
 - Discrete action space with legal action masking.
+- High-resolution internal simulator state with separate observation builder.
 - Placement legality rules:
   - elixir affordability
   - own-side deployment for non-spells
@@ -40,6 +41,15 @@
 - Observation realism:
   - richer state channels (unit maps, card cycle, opponent hidden info model)
   - uncertainty/partial observability modeling
+
+## Observation Architecture
+- Internal simulation state is tracked at full simulator resolution and can be
+  exported via `get_state_snapshot()`.
+- Policy observations are generated separately via
+  `build_observation_from_state(...)`.
+- Optional low-resolution unit-density maps can be enabled with:
+  - `observe_unit_density: true`
+  - `obs_grid_w`, `obs_grid_h`
 - Opponent model:
   - current enemy behavior is simplified stochastic pressure
   - needs scripted/learned adversary with deck-conditioned policy

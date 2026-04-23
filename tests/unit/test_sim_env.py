@@ -453,3 +453,24 @@ def test_friendly_troop_can_enter_river_on_bridge_lane() -> None:
     assert env.own_units
     unit = env.own_units[0]
     assert unit.y == env.river_bottom_y
+
+
+def test_state_snapshot_and_observation_builder_roundtrip() -> None:
+    env = CrLikeSimEnv()
+    env.reset(seed=0)
+    snap = env.get_state_snapshot()
+    obs = env.build_observation_from_state(snap)
+    assert set(obs.keys()) == {"global", "hand_ids", "hand_costs"}
+    assert obs["global"].shape == (8,)
+    assert obs["hand_ids"].shape == (env.cfg.hand_size,)
+    assert obs["hand_costs"].shape == (env.cfg.hand_size,)
+
+
+def test_optional_low_res_unit_density_observation() -> None:
+    cfg = SimConfig(observe_unit_density=True, obs_grid_w=5, obs_grid_h=6, enemy_spawn_chance=0.0)
+    env = CrLikeSimEnv(config=cfg)
+    obs, _ = env.reset(seed=0)
+    assert "unit_density" in obs
+    assert obs["unit_density"].shape == (2, 6, 5)
+    flat = flatten_observation(obs)
+    assert flat.shape[0] == 8 + env.cfg.hand_size + env.cfg.hand_size + (2 * 6 * 5)

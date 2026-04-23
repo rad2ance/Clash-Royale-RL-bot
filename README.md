@@ -124,6 +124,17 @@ tests/unit/                      lightweight tests
 3. Integrate card metadata into combat and reward dynamics.
 4. Replace random data collection with human/heuristic trajectories.
 
+## High-Res State + Low-Res Obs
+
+- The simulator now keeps an internal high-resolution state and separately
+  builds policy observations from that state.
+- By default, observations stay lightweight (`global`, `hand_ids`,
+  `hand_costs`).
+- You can optionally expose low-resolution unit density maps to the model via
+  config:
+  - `sim.observe_unit_density: true`
+  - `sim.obs_grid_w`, `sim.obs_grid_h`
+
 ## Real-play data notes
 
 - `record_emulator_session.py` reads touch events from `adb shell getevent -lt`.

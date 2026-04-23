@@ -37,6 +37,10 @@ class SimConfig:
     troop_attack_range_cells: int = 2
     building_attack_range_cells: int = 4
     attack_cooldown_steps: int = 3
+    # Observation builder controls (policy-facing representation).
+    observe_unit_density: bool = False
+    obs_grid_w: int = 4
+    obs_grid_h: int = 7
 
 
 @dataclass(frozen=True)
@@ -65,6 +69,21 @@ class ActiveUnit:
     attack_cooldown_steps: int = 3
     cooldown_remaining: int = 0
     hit_damage: float = 1.0
+
+
+@dataclass(frozen=True)
+class SimStateSnapshot:
+    step_count: int
+    time_left: float
+    elixir: float
+    own_king_hp: float
+    enemy_king_hp: float
+    own_princess_hps: np.ndarray
+    enemy_princess_hps: np.ndarray
+    hand_ids: np.ndarray
+    hand_costs: np.ndarray
+    own_units: tuple[ActiveUnit, ...]
+    enemy_units: tuple[ActiveUnit, ...]
 
 
 class CrLikeSimEnv(gym.Env):
@@ -97,15 +116,21 @@ class CrLikeSimEnv(gym.Env):
         self.card_catalog = self._build_default_card_catalog()
 
         self.action_space = spaces.Discrete(self.n_actions)
-        self.observation_space = spaces.Dict(
-            {
-                "global": spaces.Box(low=0.0, high=1.0, shape=(8,), dtype=np.float32),
-                "hand_ids": spaces.Box(
-                    low=0.0, high=float(self.cfg.n_cards), shape=(self.cfg.hand_size,), dtype=np.float32
-                ),
-                "hand_costs": spaces.Box(low=0.0, high=10.0, shape=(self.cfg.hand_size,), dtype=np.float32),
-            }
-        )
+        obs_spaces: dict[str, spaces.Space] = {
+            "global": spaces.Box(low=0.0, high=1.0, shape=(8,), dtype=np.float32),
+            "hand_ids": spaces.Box(
+                low=0.0, high=float(self.cfg.n_cards), shape=(self.cfg.hand_size,), dtype=np.float32
+            ),
+            "hand_costs": spaces.Box(low=0.0, high=10.0, shape=(self.cfg.hand_size,), dtype=np.float32),
+        }
+        if self.cfg.observe_unit_density:
+            obs_spaces["unit_density"] = spaces.Box(
+                low=0.0,
+                high=1.0,
+                shape=(2, self.cfg.obs_grid_h, self.cfg.obs_grid_w),
+                dtype=np.float32,
+            )
+        self.observation_space = spaces.Dict(obs_spaces)
 
         self.step_count = 0
         self.time_left = 180.0
@@ -177,25 +202,59 @@ class CrLikeSimEnv(gym.Env):
         self.hand_ids[slot] = int(self.rng.integers(0, self.cfg.n_cards))
         self.hand_costs[slot] = float(self.get_card_meta(int(self.hand_ids[slot])).elixir_cost)
 
-    def _get_obs(self) -> dict[str, np.ndarray]:
+    def get_state_snapshot(self) -> SimStateSnapshot:
+        return SimStateSnapshot(
+            step_count=int(self.step_count),
+            time_left=float(self.time_left),
+            elixir=float(self.elixir),
+            own_king_hp=float(self.own_king_hp),
+            enemy_king_hp=float(self.enemy_king_hp),
+            own_princess_hps=self.own_princess_hps.astype(np.float32).copy(),
+            enemy_princess_hps=self.enemy_princess_hps.astype(np.float32).copy(),
+            hand_ids=self.hand_ids.astype(np.int32).copy(),
+            hand_costs=self.hand_costs.astype(np.float32).copy(),
+            own_units=tuple(self.own_units),
+            enemy_units=tuple(self.enemy_units),
+        )
+
+    def _build_unit_density(self, state: SimStateSnapshot) -> np.ndarray:
+        h = max(1, int(self.cfg.obs_grid_h))
+        w = max(1, int(self.cfg.obs_grid_w))
+        density = np.zeros((2, h, w), dtype=np.float32)
+        max_count = 4.0
+        for idx, units in enumerate((state.own_units, state.enemy_units)):
+            for unit in units:
+                gx = int(np.clip(np.floor(unit.x / max(1, self.cfg.grid_w) * w), 0, w - 1))
+                gy = int(np.clip(np.floor(unit.y / max(1, self.cfg.grid_h) * h), 0, h - 1))
+                density[idx, gy, gx] += 1.0
+        return np.clip(density / max_count, 0.0, 1.0)
+
+    def build_observation_from_state(self, state: SimStateSnapshot) -> dict[str, np.ndarray]:
         global_vec = np.array(
             [
-                self.time_left / 180.0,
-                self.elixir / self.cfg.max_elixir,
-                self.own_king_hp / self.cfg.king_hp,
-                self.enemy_king_hp / self.cfg.king_hp,
-                self.own_princess_hps.mean() / self.cfg.princess_hp,
-                self.enemy_princess_hps.mean() / self.cfg.princess_hp,
-                float(self.step_count) / float(self.cfg.max_steps),
-                1.0 if self.time_left <= 60.0 else 0.0,  # double-elixir-ish phase
+                state.time_left / 180.0,
+                state.elixir / self.cfg.max_elixir,
+                state.own_king_hp / self.cfg.king_hp,
+                state.enemy_king_hp / self.cfg.king_hp,
+                state.own_princess_hps.mean() / self.cfg.princess_hp,
+                state.enemy_princess_hps.mean() / self.cfg.princess_hp,
+                float(state.step_count) / float(self.cfg.max_steps),
+                1.0 if state.time_left <= 60.0 else 0.0,  # double-elixir-ish phase
             ],
             dtype=np.float32,
         )
-        return {
+        obs = {
             "global": global_vec,
-            "hand_ids": self.hand_ids.astype(np.float32),
-            "hand_costs": self.hand_costs.astype(np.float32),
+            "hand_ids": state.hand_ids.astype(np.float32),
+            "hand_costs": state.hand_costs.astype(np.float32),
         }
+        if self.cfg.observe_unit_density:
+            obs["unit_density"] = self._build_unit_density(state)
+        return obs
+
+    def _get_obs(self) -> dict[str, np.ndarray]:
+        state = self.get_state_snapshot()
+        return self.build_observation_from_state(state)
 
     def _decode_action(self, action: int) -> tuple[int, int, int] | None:
         if action == self.noop_action:
@@ -727,4 +786,6 @@ class CrLikeSimEnv(gym.Env):
 def flatten_observation(obs: dict[str, np.ndarray]) -> np.ndarray:
     """Convert dict observation into flat vector for simple MLP policies."""
     parts = [obs["global"].ravel(), obs["hand_ids"].ravel(), obs["hand_costs"].ravel()]
+    if "unit_density" in obs:
+        parts.append(obs["unit_density"].ravel())
     return np.concatenate(parts, axis=0).astype(np.float32)

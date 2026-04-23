@@ -21,6 +21,12 @@ sim:
   enemy_spawn_chance: 0.08
   troop_lifetime_steps: 18
   building_lifetime_steps: 28
+  troop_attack_range_cells: 2
+  building_attack_range_cells: 4
+  attack_cooldown_steps: 3
+  observe_unit_density: false
+  obs_grid_w: 4
+  obs_grid_h: 7
 
 bc:
   epochs: 10
