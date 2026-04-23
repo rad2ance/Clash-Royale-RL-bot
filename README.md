@@ -30,6 +30,9 @@ sample from all actions (including illegal ones), pass:
 python scripts/collect_random_sim_data.py --episodes 200 --out data/sim_random --allow-illegal-actions
 ```
 
+Collected simulator episodes now also persist per-step legal action masks
+(`action_masks`) in each `.npz` file for offline analysis/training.
+
 Train behavior cloning on the generated trajectories:
 
 ```powershell

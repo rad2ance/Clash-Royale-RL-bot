@@ -15,9 +15,11 @@ def collect_episode(env: CrLikeSimEnv, max_steps: int, allow_illegal_actions: bo
     act_buf: list[int] = []
     rew_buf: list[float] = []
     done_buf: list[bool] = []
+    mask_buf: list[np.ndarray] = []
 
     for _ in range(max_steps):
         flat = flatten_observation(obs)
+        legal_mask = env.get_legal_action_mask()
         if allow_illegal_actions:
             action = int(env.action_space.sample())
         else:
@@ -28,6 +30,7 @@ def collect_episode(env: CrLikeSimEnv, max_steps: int, allow_illegal_actions: bo
         act_buf.append(action)
         rew_buf.append(reward)
         done_buf.append(bool(terminated or truncated))
+        mask_buf.append(legal_mask.astype(bool))
 
         obs = next_obs
         if terminated or truncated:
@@ -38,6 +41,7 @@ def collect_episode(env: CrLikeSimEnv, max_steps: int, allow_illegal_actions: bo
         actions=np.array(act_buf, dtype=np.int64),
         rewards=np.array(rew_buf, dtype=np.float32),
         dones=np.array(done_buf, dtype=bool),
+        action_masks=np.stack(mask_buf).astype(bool),
     )
 
 
