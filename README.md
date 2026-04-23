@@ -4,6 +4,7 @@ This repository is a practical starter stack for a Clash Royale research bot:
 
 - Abstract simulator environment (`gymnasium` API)
 - Trajectory dataset format for imitation learning
+- Emulator session recorder (frames + touch events)
 - Behavior cloning (BC) baseline trainer in PyTorch
 - PPO trainer scaffold (via Stable-Baselines3)
 - BlueStacks/ADB interface stubs for real-game integration
@@ -28,6 +29,18 @@ Train behavior cloning on the generated trajectories:
 python scripts/train_bc.py --data-dir data/sim_random --epochs 8 --out checkpoints/bc_sim.pt
 ```
 
+Record a real BlueStacks play session (human demonstrations):
+
+```powershell
+python scripts/record_emulator_session.py --duration 180 --fps 3 --out recordings
+```
+
+Convert recorded sessions into BC episodes:
+
+```powershell
+python scripts/build_tap_bc_dataset.py --recordings-dir recordings --out data/il_tap
+```
+
 Train PPO baseline on simulator:
 
 ```powershell
@@ -43,6 +56,7 @@ src/crbot/sim/                   abstract simulator env
 src/crbot/data/                  trajectory schema + io
 src/crbot/models/                policy models
 src/crbot/emulator/              BlueStacks + adb stubs
+src/crbot/recording/             real-play recording + label building
 tests/unit/                      lightweight tests
 ```
 
@@ -59,3 +73,11 @@ tests/unit/                      lightweight tests
 3. Add action masking for invalid placements and unavailable cards.
 4. Replace random data collection with human/heuristic trajectories.
 
+## Real-play data notes
+
+- `record_emulator_session.py` reads touch events from `adb shell getevent -lt`.
+- It captures frame images and touch logs into `recordings/session_*`.
+- `build_tap_bc_dataset.py` reconstructs actions by pairing:
+  - tap in hand slot, then
+  - tap in arena within a short timeout.
+- The resulting action encoding matches the simulator's discrete action format.
