@@ -66,6 +66,7 @@ def test_legal_action_mask_enforces_deploy_side() -> None:
     env.reset(seed=0)
     env.elixir = env.cfg.max_elixir
     env.hand_costs[:] = np.array([1.0, 1.0, 1.0, 1.0], dtype=np.float32)
+    env.hand_ids[:] = np.array([env.cfg.spell_card_count + 1] * env.cfg.hand_size, dtype=np.int32)
 
     slot = 0
     top_y = max(0, env.deploy_min_y - 1)
@@ -77,3 +78,17 @@ def test_legal_action_mask_enforces_deploy_side() -> None:
 
     assert env.is_action_legal(bottom_action) is True
     assert env.is_action_legal(top_action) is False
+
+
+def test_spell_cards_can_target_full_arena() -> None:
+    env = CrLikeSimEnv()
+    env.reset(seed=0)
+    env.elixir = env.cfg.max_elixir
+    env.hand_costs[:] = np.array([1.0, 1.0, 1.0, 1.0], dtype=np.float32)
+    env.hand_ids[:] = np.array([0, env.cfg.spell_card_count + 1, env.cfg.spell_card_count + 1, env.cfg.spell_card_count + 1], dtype=np.int32)
+
+    slot = 0  # spell card slot
+    top_y = max(0, env.deploy_min_y - 1)
+    x = env.cfg.grid_w // 2
+    top_action = 1 + slot * env.actions_per_card + top_y * env.cfg.grid_w + x
+    assert env.is_action_legal(top_action) is True

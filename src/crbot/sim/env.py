@@ -18,6 +18,7 @@ class SimConfig:
     princess_hp: float = 2500.0
     hand_size: int = 4
     n_cards: int = 12
+    spell_card_count: int = 3
     grid_w: int = 8
     grid_h: int = 14
     # Actions can only deploy on the player's side of the arena.
@@ -108,6 +109,9 @@ class CrLikeSimEnv(gym.Env):
         y = rem // self.cfg.grid_w
         return slot, x, y
 
+    def _is_spell_card(self, card_id: int) -> bool:
+        return 0 <= int(card_id) < self.cfg.spell_card_count
+
     def get_legal_action_mask(self) -> np.ndarray:
         """
         Return a boolean mask over the discrete action space.
@@ -118,20 +122,22 @@ class CrLikeSimEnv(gym.Env):
         mask = np.zeros(self.n_actions, dtype=bool)
         mask[self.noop_action] = True
         affordable_slots = self.hand_costs <= (self.elixir + 1e-6)
-        placement_mask = np.zeros(self.actions_per_card, dtype=bool)
+        own_side_mask = np.zeros(self.actions_per_card, dtype=bool)
         for y in range(self.cfg.grid_h):
             if y < self.deploy_min_y:
                 continue
             row_start = y * self.cfg.grid_w
             row_end = row_start + self.cfg.grid_w
-            placement_mask[row_start:row_end] = True
+            own_side_mask[row_start:row_end] = True
+        all_arena_mask = np.ones(self.actions_per_card, dtype=bool)
 
         for slot in range(self.cfg.hand_size):
             if not affordable_slots[slot]:
                 continue
             start = 1 + slot * self.actions_per_card
             stop = start + self.actions_per_card
-            mask[start:stop] = placement_mask
+            card_id = int(self.hand_ids[slot])
+            mask[start:stop] = all_arena_mask if self._is_spell_card(card_id) else own_side_mask
         return mask
 
     def is_action_legal(self, action: int) -> bool:
