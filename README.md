@@ -83,7 +83,7 @@ tests/unit/                      lightweight tests
 
 1. Replace heuristic `CrLikeSimEnv` combat with card-specific dynamics.
 2. Add visual state extraction from emulator screenshots.
-3. Add card metadata-driven lane priors and combat dynamics.
+3. Integrate card metadata into combat and reward dynamics.
 4. Replace random data collection with human/heuristic trajectories.
 
 ## Real-play data notes

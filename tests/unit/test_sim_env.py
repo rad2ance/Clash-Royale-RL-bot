@@ -147,3 +147,32 @@ def test_spell_can_target_river_rows() -> None:
     river_y = env.river_top_y
     action = 1 + slot * env.actions_per_card + river_y * env.cfg.grid_w + x
     assert env.is_action_legal(action) is True
+
+
+def test_hand_costs_match_card_metadata_after_reset() -> None:
+    env = CrLikeSimEnv()
+    env.reset(seed=0)
+    for slot in range(env.cfg.hand_size):
+        cid = int(env.hand_ids[slot])
+        expected = float(env.get_card_meta(cid).elixir_cost)
+        assert float(env.hand_costs[slot]) == expected
+
+
+def test_replacement_card_cost_matches_metadata() -> None:
+    env = CrLikeSimEnv()
+    env.reset(seed=0)
+    env.elixir = env.cfg.max_elixir
+    env.hand_ids[:] = np.array([0, 1, 2, 3], dtype=np.int32)
+    env.hand_costs[:] = np.array([1.0, 1.0, 1.0, 1.0], dtype=np.float32)
+
+    # Play slot 0 legally to force replacement draw for that slot.
+    slot = 0
+    y = min(env.cfg.grid_h - 1, env.deploy_min_y + 1)
+    x = env.cfg.grid_w // 2
+    action = 1 + slot * env.actions_per_card + y * env.cfg.grid_w + x
+    _, _, _, _, info = env.step(action)
+    assert info["legal_action"] is True
+
+    new_cid = int(env.hand_ids[slot])
+    expected = float(env.get_card_meta(new_cid).elixir_cost)
+    assert float(env.hand_costs[slot]) == expected

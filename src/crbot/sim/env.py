@@ -33,6 +33,16 @@ class SimConfig:
     bridge_lane_half_width: int = 1
 
 
+@dataclass(frozen=True)
+class CardMeta:
+    card_id: int
+    name: str
+    elixir_cost: int
+    card_type: str  # "spell" | "building" | "troop"
+    target_type: str  # "ground" | "air" | "any" | "area"
+    can_hit_air: bool
+
+
 class CrLikeSimEnv(gym.Env):
     """
     Abstract Clash Royale-like simulator.
@@ -60,6 +70,7 @@ class CrLikeSimEnv(gym.Env):
         self.river_bottom_y = (
             self.cfg.river_bottom_y if self.cfg.river_bottom_y is not None else min(self.cfg.grid_h - 1, self.deploy_min_y)
         )
+        self.card_catalog = self._build_default_card_catalog()
 
         self.action_space = spaces.Discrete(self.n_actions)
         self.observation_space = spaces.Dict(
@@ -83,13 +94,61 @@ class CrLikeSimEnv(gym.Env):
         self.hand_costs = np.zeros(self.cfg.hand_size, dtype=np.float32)
         self._draw_initial_hand()
 
+    def _build_default_card_catalog(self) -> dict[int, CardMeta]:
+        """
+        Construct deterministic metadata for each card id.
+
+        This keeps the simulator lightweight while ensuring card ids map to
+        stable costs and semantics across resets and episodes.
+        """
+        catalog: dict[int, CardMeta] = {}
+        for cid in range(self.cfg.n_cards):
+            if cid < self.cfg.spell_card_count:
+                cost = 2 + (cid % 3)
+                card_type = "spell"
+                target_type = "area"
+                can_hit_air = True
+            elif cid < self.cfg.spell_card_count + self.cfg.building_card_count:
+                rel = cid - self.cfg.spell_card_count
+                cost = 4 + (rel % 2)
+                card_type = "building"
+                target_type = "ground"
+                can_hit_air = False
+            else:
+                rel = cid - (self.cfg.spell_card_count + self.cfg.building_card_count)
+                cost = 2 + (rel % 5)
+                card_type = "troop"
+                can_hit_air = bool(rel % 2)
+                target_type = "any" if can_hit_air else "ground"
+
+            catalog[cid] = CardMeta(
+                card_id=cid,
+                name=f"card_{cid:02d}",
+                elixir_cost=int(cost),
+                card_type=card_type,
+                target_type=target_type,
+                can_hit_air=can_hit_air,
+            )
+        return catalog
+
+    def get_card_meta(self, card_id: int) -> CardMeta:
+        cid = int(card_id)
+        if cid not in self.card_catalog:
+            raise KeyError(f"Unknown card id: {cid}")
+        return self.card_catalog[cid]
+
+    def _sync_hand_costs_from_ids(self) -> None:
+        for slot in range(self.cfg.hand_size):
+            cid = int(self.hand_ids[slot])
+            self.hand_costs[slot] = float(self.get_card_meta(cid).elixir_cost)
+
     def _draw_initial_hand(self) -> None:
         self.hand_ids = self.rng.integers(0, self.cfg.n_cards, size=self.cfg.hand_size, dtype=np.int32)
-        self.hand_costs = self.rng.integers(1, 7, size=self.cfg.hand_size).astype(np.float32)
+        self._sync_hand_costs_from_ids()
 
     def _draw_replacement_card(self, slot: int) -> None:
         self.hand_ids[slot] = int(self.rng.integers(0, self.cfg.n_cards))
-        self.hand_costs[slot] = float(self.rng.integers(1, 7))
+        self.hand_costs[slot] = float(self.get_card_meta(int(self.hand_ids[slot])).elixir_cost)
 
     def _get_obs(self) -> dict[str, np.ndarray]:
         global_vec = np.array(
@@ -122,12 +181,10 @@ class CrLikeSimEnv(gym.Env):
         return slot, x, y
 
     def _is_spell_card(self, card_id: int) -> bool:
-        return 0 <= int(card_id) < self.cfg.spell_card_count
+        return self.get_card_meta(card_id).card_type == "spell"
 
     def _is_building_card(self, card_id: int) -> bool:
-        start = self.cfg.spell_card_count
-        end = self.cfg.spell_card_count + self.cfg.building_card_count
-        return start <= int(card_id) < end
+        return self.get_card_meta(card_id).card_type == "building"
 
     def _is_river_row(self, y: int) -> bool:
         lo = min(self.river_top_y, self.river_bottom_y)
