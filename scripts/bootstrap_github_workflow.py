@@ -5,6 +5,7 @@ import json
 import os
 import urllib.error
 import urllib.request
+from typing import Any
 
 
 DEFAULT_LABELS = [
@@ -69,7 +70,7 @@ DEFAULT_ISSUES = [
 ]
 
 
-def github_request(method: str, url: str, token: str, payload: dict | None = None) -> dict:
+def github_request(method: str, url: str, token: str, payload: dict | None = None) -> Any:
     data = None if payload is None else json.dumps(payload).encode("utf-8")
     req = urllib.request.Request(url=url, data=data, method=method)
     req.add_header("Authorization", f"Bearer {token}")
@@ -80,6 +81,29 @@ def github_request(method: str, url: str, token: str, payload: dict | None = Non
     with urllib.request.urlopen(req, timeout=30) as resp:
         raw = resp.read().decode("utf-8")
     return json.loads(raw) if raw else {}
+
+
+def normalize_issue_title(title: str) -> str:
+    return " ".join(title.strip().lower().split())
+
+
+def list_existing_issue_titles(repo: str, token: str, state: str = "all") -> set[str]:
+    titles: set[str] = set()
+    page = 1
+    while True:
+        url = f"https://api.github.com/repos/{repo}/issues?state={state}&per_page=100&page={page}"
+        rows = github_request("GET", url, token)
+        if not isinstance(rows, list) or not rows:
+            break
+        for row in rows:
+            # GitHub issues API includes PRs; skip those.
+            if isinstance(row, dict) and "pull_request" in row:
+                continue
+            title = str(row.get("title", "")).strip() if isinstance(row, dict) else ""
+            if title:
+                titles.add(normalize_issue_title(title))
+        page += 1
+    return titles
 
 
 def create_label(repo: str, token: str, name: str, color: str) -> None:
@@ -108,6 +132,11 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Bootstrap GitHub issue workflow for this repo.")
     parser.add_argument("--repo", default="rad2ance/Clash-Royale-RL-bot", help="GitHub repo in owner/name format")
     parser.add_argument("--apply", action="store_true", help="Apply changes remotely (default is dry-run)")
+    parser.add_argument(
+        "--allow-duplicates",
+        action="store_true",
+        help="Create issues even if the same title already exists.",
+    )
     args = parser.parse_args()
 
     if not args.apply:
@@ -127,8 +156,18 @@ def main() -> None:
     for name, color in DEFAULT_LABELS:
         create_label(args.repo, token, name, color)
 
+    existing_titles = set()
+    if not args.allow_duplicates:
+        existing_titles = list_existing_issue_titles(args.repo, token, state="all")
+
     created_urls: list[str] = []
+    skipped_titles: list[str] = []
     for issue in DEFAULT_ISSUES:
+        normalized = normalize_issue_title(issue["title"])
+        if not args.allow_duplicates and normalized in existing_titles:
+            print(f"[issue] exists, skipping: {issue['title']}")
+            skipped_titles.append(issue["title"])
+            continue
         url = create_issue(
             repo=args.repo,
             token=token,
@@ -137,10 +176,18 @@ def main() -> None:
             labels=issue["labels"],
         )
         created_urls.append(url)
+        existing_titles.add(normalized)
 
     print("\n[done] Created issues:")
-    for url in created_urls:
-        print(f"  - {url}")
+    if not created_urls:
+        print("  - none")
+    else:
+        for url in created_urls:
+            print(f"  - {url}")
+    if skipped_titles:
+        print("[done] Skipped existing titles:")
+        for title in skipped_titles:
+            print(f"  - {title}")
 
 
 if __name__ == "__main__":

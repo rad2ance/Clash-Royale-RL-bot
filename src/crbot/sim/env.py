@@ -55,6 +55,8 @@ class ActiveUnit:
     ttl: int
     card_type: str
     target_type: str
+    can_hit_air: bool
+    is_air: bool
     is_enemy: bool
 
 
@@ -277,6 +279,8 @@ class CrLikeSimEnv(gym.Env):
                 ttl=int(ttl),
                 card_type=card.card_type,
                 target_type=card.target_type,
+                can_hit_air=card.can_hit_air,
+                is_air=False,
                 is_enemy=False,
             )
         )
@@ -296,19 +300,42 @@ class CrLikeSimEnv(gym.Env):
                 ttl=max(6, int(self.cfg.troop_lifetime_steps * 0.7)),
                 card_type="troop",
                 target_type="ground",
+                can_hit_air=False,
+                is_air=False,
                 is_enemy=True,
             )
         )
+
+    def _can_target(self, attacker: ActiveUnit, target: ActiveUnit) -> bool:
+        if target.is_air and not attacker.can_hit_air:
+            return False
+        if attacker.target_type == "ground" and target.is_air:
+            return False
+        return True
+
+    def _closest_target(self, attacker: ActiveUnit, candidates: list[ActiveUnit]) -> ActiveUnit | None:
+        in_range: list[ActiveUnit] = []
+        for target in candidates:
+            if not self._can_target(attacker, target):
+                continue
+            if abs(attacker.x - target.x) <= 1 and abs(attacker.y - target.y) <= 2:
+                in_range.append(target)
+        if not in_range:
+            return None
+        return min(in_range, key=lambda u: (abs(attacker.x - u.x) + abs(attacker.y - u.y), u.hp))
 
     def _process_unit_duels(self) -> None:
         if not self.own_units or not self.enemy_units:
             return
         duel_scale = 3.0 * self.cfg.step_seconds
         for own in self.own_units:
-            for enemy in self.enemy_units:
-                if abs(own.x - enemy.x) <= 1 and abs(own.y - enemy.y) <= 2:
-                    own.hp -= enemy.dps * duel_scale
-                    enemy.hp -= own.dps * duel_scale
+            target = self._closest_target(own, self.enemy_units)
+            if target is not None:
+                target.hp -= own.dps * duel_scale
+        for enemy in self.enemy_units:
+            target = self._closest_target(enemy, self.own_units)
+            if target is not None:
+                target.hp -= enemy.dps * duel_scale
 
     def _process_ongoing_unit_damage(self) -> tuple[float, float]:
         damage_to_enemy = 0.0
@@ -317,7 +344,7 @@ class CrLikeSimEnv(gym.Env):
         enemy_king_share = 0.55
 
         for unit in self.own_units:
-            forward_bias = 0.75 + 0.5 * (unit.y / max(1, self.cfg.grid_h - 1))
+            forward_bias = 0.75 + 0.5 * ((self.cfg.grid_h - 1 - unit.y) / max(1, self.cfg.grid_h - 1))
             pressure = unit.dps * self.cfg.step_seconds * forward_bias
             if unit.card_type == "building":
                 pressure *= 0.8
@@ -346,10 +373,13 @@ class CrLikeSimEnv(gym.Env):
         for unit in self.own_units:
             unit.ttl -= 1
             unit.hp -= 0.2
+            if unit.card_type != "building":
+                unit.y = max(0, unit.y - 1)
         for unit in self.enemy_units:
             unit.ttl -= 1
             unit.hp -= 0.2
-            unit.y = min(self.cfg.grid_h - 1, unit.y + 1)
+            if unit.card_type != "building":
+                unit.y = min(self.cfg.grid_h - 1, unit.y + 1)
 
         self.own_units = [u for u in self.own_units if u.ttl > 0 and u.hp > 0.0]
         self.enemy_units = [u for u in self.enemy_units if u.ttl > 0 and u.hp > 0.0]

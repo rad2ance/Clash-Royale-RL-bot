@@ -125,3 +125,6 @@ Apply remotely:
 $env:GITHUB_TOKEN="YOUR_TOKEN"
 python scripts/bootstrap_github_workflow.py --apply
 ```
+
+Re-running is idempotent by default (existing issue titles are skipped). Use
+`--allow-duplicates` if you explicitly want new duplicates.

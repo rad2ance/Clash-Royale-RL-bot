@@ -286,9 +286,84 @@ def test_existing_friendly_unit_deals_ongoing_damage_on_noop() -> None:
             ttl=4,
             card_type="troop",
             target_type="any",
+            can_hit_air=True,
+            is_air=False,
             is_enemy=False,
         )
     ]
     _, _, _, _, info = env.step(env.noop_action)
     assert float(info["ongoing_damage_to_enemy"]) > 0.0
     assert float(env.enemy_king_hp) < start_enemy_hp
+
+
+def test_friendly_troop_advances_toward_enemy_side() -> None:
+    env = CrLikeSimEnv(config=SimConfig(enemy_spawn_chance=0.0))
+    env.reset(seed=0)
+    start_y = min(env.cfg.grid_h - 1, env.deploy_min_y + 3)
+    env.own_units = [
+        ActiveUnit(
+            x=env.cfg.grid_w // 2,
+            y=start_y,
+            hp=40.0,
+            dps=10.0,
+            ttl=4,
+            card_type="troop",
+            target_type="any",
+            can_hit_air=True,
+            is_air=False,
+            is_enemy=False,
+        )
+    ]
+    env.step(env.noop_action)
+    assert env.own_units
+    assert env.own_units[0].y == start_y - 1
+
+
+def test_target_priority_hits_closest_enemy_in_range() -> None:
+    env = CrLikeSimEnv(config=SimConfig(enemy_spawn_chance=0.0))
+    env.reset(seed=0)
+    env.own_units = [
+        ActiveUnit(
+            x=4,
+            y=8,
+            hp=60.0,
+            dps=20.0,
+            ttl=5,
+            card_type="troop",
+            target_type="any",
+            can_hit_air=True,
+            is_air=False,
+            is_enemy=False,
+        )
+    ]
+    close = ActiveUnit(
+        x=4,
+        y=7,
+        hp=50.0,
+        dps=5.0,
+        ttl=5,
+        card_type="troop",
+        target_type="ground",
+        can_hit_air=False,
+        is_air=False,
+        is_enemy=True,
+    )
+    far = ActiveUnit(
+        x=0,
+        y=0,
+        hp=50.0,
+        dps=5.0,
+        ttl=5,
+        card_type="troop",
+        target_type="ground",
+        can_hit_air=False,
+        is_air=False,
+        is_enemy=True,
+    )
+    env.enemy_units = [close, far]
+    close_hp_before = close.hp
+    far_hp_before = far.hp
+    env.step(env.noop_action)
+    close_loss = close_hp_before - close.hp
+    far_loss = far_hp_before - far.hp
+    assert close_loss > far_loss
