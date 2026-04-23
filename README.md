@@ -77,7 +77,7 @@ tests/unit/                      lightweight tests
 
 1. Replace heuristic `CrLikeSimEnv` combat with card-specific dynamics.
 2. Add visual state extraction from emulator screenshots.
-3. Expand action masking from elixir/card availability into placement legality constraints.
+3. Add card-type-aware placement rules (e.g. spell anywhere, troops own side, buildings constrained lanes).
 4. Replace random data collection with human/heuristic trajectories.
 
 ## Real-play data notes

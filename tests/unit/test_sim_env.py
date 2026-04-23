@@ -41,7 +41,8 @@ def test_legal_action_mask_respects_elixir() -> None:
 
     env.elixir = env.cfg.max_elixir
     mask = env.get_legal_action_mask()
-    assert bool(mask.all()) is True
+    assert bool(mask[env.noop_action]) is True
+    assert bool(mask[1:].any()) is True
 
 
 def test_sample_legal_action_returns_only_legal_actions() -> None:
@@ -58,3 +59,21 @@ def test_sample_legal_action_returns_only_legal_actions() -> None:
     samples = [env.sample_legal_action() for _ in range(100)]
     assert any(a != env.noop_action for a in samples)
     assert all(env.is_action_legal(a) for a in samples)
+
+
+def test_legal_action_mask_enforces_deploy_side() -> None:
+    env = CrLikeSimEnv()
+    env.reset(seed=0)
+    env.elixir = env.cfg.max_elixir
+    env.hand_costs[:] = np.array([1.0, 1.0, 1.0, 1.0], dtype=np.float32)
+
+    slot = 0
+    top_y = max(0, env.deploy_min_y - 1)
+    bottom_y = min(env.cfg.grid_h - 1, env.deploy_min_y)
+    x = env.cfg.grid_w // 2
+
+    top_action = 1 + slot * env.actions_per_card + top_y * env.cfg.grid_w + x
+    bottom_action = 1 + slot * env.actions_per_card + bottom_y * env.cfg.grid_w + x
+
+    assert env.is_action_legal(bottom_action) is True
+    assert env.is_action_legal(top_action) is False

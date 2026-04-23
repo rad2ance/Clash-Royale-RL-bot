@@ -20,6 +20,9 @@ class SimConfig:
     n_cards: int = 12
     grid_w: int = 8
     grid_h: int = 14
+    # Actions can only deploy on the player's side of the arena.
+    # With y=0 at top and y increasing downward, this defaults to bottom half.
+    deploy_min_y: int | None = None
 
 
 class CrLikeSimEnv(gym.Env):
@@ -43,6 +46,7 @@ class CrLikeSimEnv(gym.Env):
         self.grid_size = self.cfg.grid_w * self.cfg.grid_h
         self.actions_per_card = self.grid_size
         self.n_actions = 1 + self.cfg.hand_size * self.actions_per_card
+        self.deploy_min_y = self.cfg.deploy_min_y if self.cfg.deploy_min_y is not None else self.cfg.grid_h // 2
 
         self.action_space = spaces.Discrete(self.n_actions)
         self.observation_space = spaces.Dict(
@@ -114,12 +118,20 @@ class CrLikeSimEnv(gym.Env):
         mask = np.zeros(self.n_actions, dtype=bool)
         mask[self.noop_action] = True
         affordable_slots = self.hand_costs <= (self.elixir + 1e-6)
+        placement_mask = np.zeros(self.actions_per_card, dtype=bool)
+        for y in range(self.cfg.grid_h):
+            if y < self.deploy_min_y:
+                continue
+            row_start = y * self.cfg.grid_w
+            row_end = row_start + self.cfg.grid_w
+            placement_mask[row_start:row_end] = True
+
         for slot in range(self.cfg.hand_size):
             if not affordable_slots[slot]:
                 continue
             start = 1 + slot * self.actions_per_card
             stop = start + self.actions_per_card
-            mask[start:stop] = True
+            mask[start:stop] = placement_mask
         return mask
 
     def is_action_legal(self, action: int) -> bool:
