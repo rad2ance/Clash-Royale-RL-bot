@@ -60,6 +60,14 @@ Train PPO with action masking (recommended):
 python scripts/train_ppo.py --timesteps 200000 --out checkpoints/ppo_sim_masked --mask-actions
 ```
 
+Evaluate a policy and save JSON metrics:
+
+```powershell
+python scripts/eval_policy.py --policy random --episodes 20 --out data/eval/random_eval.json
+python scripts/eval_policy.py --policy ppo --checkpoint checkpoints/ppo_sim.zip --episodes 20 --out data/eval/ppo_eval.json
+python scripts/eval_policy.py --policy ppo-mask --checkpoint checkpoints/ppo_sim_masked.zip --episodes 20 --out data/eval/ppo_mask_eval.json
+```
+
 Visualize a simulator episode as GIF:
 
 ```powershell
