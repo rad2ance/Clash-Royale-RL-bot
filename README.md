@@ -64,6 +64,12 @@ Build BC episodes from replay/video sessions with action labels:
 python scripts/build_video_bc_dataset.py --sessions-dir video_sessions --out data/il_video
 ```
 
+Extract baseline CV entity states from raw replay video:
+
+```powershell
+python scripts/extract_video_states.py --video replays/match1.mp4 --out data/video_states/match1_states.jsonl --stride 3
+```
+
 Merge multiple IL sources:
 
 ```powershell
@@ -174,6 +180,7 @@ tests/unit/                      lightweight tests
 - Backlog: `docs/BACKLOG.md`
 - Simulator status: `docs/SIM_STATUS.md`
 - IL source guide: `docs/IL_DATA_SOURCES.md`
+- Video CV roadmap: `docs/VIDEO_CV_ROADMAP.md`
 - GitHub issue templates live under `.github/ISSUE_TEMPLATE/`
 
 Bootstrap labels + starter issues (dry-run by default):
