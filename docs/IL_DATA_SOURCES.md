@@ -45,6 +45,12 @@ Then train:
 python scripts/train_bc.py --data-dir data/il_merged --epochs 8 --out checkpoints/bc_merged.pt
 ```
 
+Split merged IL data into train/val/test:
+```powershell
+python scripts/split_il_dataset.py --data-dir data/il_merged --out data/il_split --group-by-source
+python scripts/train_bc.py --data-dir data/il_split/train --epochs 8 --out checkpoints/bc_merged.pt
+```
+
 ## Recommended Data Priority
 1. Your own direct-play sessions (highest trust labels).
 2. Replays/videos with high-quality labels.

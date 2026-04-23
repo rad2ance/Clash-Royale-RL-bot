@@ -70,6 +70,12 @@ Merge multiple IL sources:
 python scripts/merge_il_datasets.py --inputs data/il_tap data/il_video --out data/il_merged --prefix-with-source
 ```
 
+Split IL data for training/eval:
+
+```powershell
+python scripts/split_il_dataset.py --data-dir data/il_merged --out data/il_split --group-by-source
+```
+
 Train PPO baseline on simulator:
 
 ```powershell
