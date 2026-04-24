@@ -10,6 +10,7 @@ import numpy as np
 @dataclass(frozen=True)
 class AnnotationCandidate:
     frame_index: int
+    source_frame_index: int
     timestamp: float
     priority: float
     reason_flags: tuple[str, ...]
@@ -50,6 +51,7 @@ def build_annotation_queue(
 
     for idx, row in enumerate(rows):
         timestamp = float(row.get("timestamp", float(idx)))
+        source_frame_index = int(row.get("source_frame_index", idx))
         frame_conf = float(row.get("frame_confidence", 1.0))
         entities = list(row.get("entities", []))
         entity_count = int(len(entities))
@@ -101,6 +103,7 @@ def build_annotation_queue(
         candidates.append(
             AnnotationCandidate(
                 frame_index=int(idx),
+                source_frame_index=source_frame_index,
                 timestamp=timestamp,
                 priority=float(np.clip(uncertainty, 0.0, 1.0)),
                 reason_flags=tuple(flags),

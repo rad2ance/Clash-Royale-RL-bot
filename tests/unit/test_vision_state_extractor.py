@@ -63,6 +63,7 @@ def test_load_vision_states_jsonl_roundtrip() -> None:
                 ),
                 ui_anchors=anchors,
                 frame_confidence=0.75,
+                source_frame_index=42,
             )
         ]
         save_vision_states_jsonl(out, states)
@@ -72,6 +73,7 @@ def test_load_vision_states_jsonl_roundtrip() -> None:
         assert loaded[0].ui_anchors is not None
         assert loaded[0].entities[0].team == "own"
         assert abs(float(loaded[0].frame_confidence) - 0.75) < 1e-6
+        assert int(loaded[0].source_frame_index) == 42
 
 
 def test_default_ui_anchors_are_normalized() -> None:

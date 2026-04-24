@@ -31,6 +31,7 @@ class TrackedVisionState:
     entities: tuple[TrackedEntity, ...]
     ui_anchors: UiAnchors | None = None
     frame_confidence: float = 1.0
+    source_frame_index: int | None = None
 
 
 @dataclass
@@ -89,6 +90,7 @@ class SimpleVisionTracker:
                 entities=tuple(),
                 ui_anchors=state.ui_anchors,
                 frame_confidence=state.frame_confidence,
+                source_frame_index=state.source_frame_index,
             )
 
         pairs: list[tuple[float, int, int]] = []
@@ -142,6 +144,7 @@ class SimpleVisionTracker:
             entities=tuple(tracked),
             ui_anchors=state.ui_anchors,
             frame_confidence=state.frame_confidence,
+            source_frame_index=state.source_frame_index,
         )
 
 

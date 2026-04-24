@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+from dataclasses import replace
 from pathlib import Path
 
 from crbot.vision import BaselineCvStateExtractor, save_vision_states_jsonl
@@ -62,6 +63,7 @@ def main() -> None:
                 continue
             ts = frame_idx / max(1e-6, fps)
             state = extractor.extract(frame, ts)
+            state = replace(state, source_frame_index=int(frame_idx))
             if args.skip_low_conf and state.frame_confidence < args.min_frame_confidence:
                 skipped_low_conf += 1
                 frame_idx += 1

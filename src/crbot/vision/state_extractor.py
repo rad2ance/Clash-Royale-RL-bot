@@ -43,6 +43,7 @@ class VisionState:
     entities: tuple[DetectedEntity, ...]
     ui_anchors: UiAnchors | None = None
     frame_confidence: float = 1.0
+    source_frame_index: int | None = None
 
 
 class StateExtractor(Protocol):
@@ -102,6 +103,9 @@ def load_vision_states_jsonl(path: str | Path) -> list[VisionState]:
                     entities=entities,
                     ui_anchors=anchors,
                     frame_confidence=float(row.get("frame_confidence", 1.0)),
+                    source_frame_index=None
+                    if row.get("source_frame_index") is None
+                    else int(row.get("source_frame_index")),
                 )
             )
     return states

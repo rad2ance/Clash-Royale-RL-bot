@@ -18,6 +18,7 @@ def test_annotation_queue_prioritizes_low_confidence_frames() -> None:
     assert len(q) == 2
     assert q[0].timestamp == 0.1
     assert q[0].priority > q[1].priority
+    assert int(q[0].source_frame_index) == 1
 
 
 def test_annotation_queue_uses_new_track_signal() -> None:
@@ -35,6 +36,15 @@ def test_annotation_queue_uses_new_track_signal() -> None:
     ]
     q = build_annotation_queue(rows, top_k=2)
     assert q[0].new_tracks >= 1
+
+
+def test_annotation_queue_prefers_source_frame_index_from_rows() -> None:
+    rows = [
+        {"timestamp": 0.0, "source_frame_index": 17, "frame_confidence": 0.8, "entities": []},
+    ]
+    q = build_annotation_queue(rows, top_k=1)
+    assert len(q) == 1
+    assert int(q[0].source_frame_index) == 17
 
 
 def test_summarize_annotation_budget_scales_with_frame_count() -> None:

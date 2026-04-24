@@ -40,6 +40,7 @@ def main() -> None:
     summary["top_queue_preview"] = [
         {
             "frame_index": int(x.frame_index),
+            "source_frame_index": int(x.source_frame_index),
             "timestamp": float(x.timestamp),
             "priority": float(x.priority),
             "reason_flags": list(x.reason_flags),

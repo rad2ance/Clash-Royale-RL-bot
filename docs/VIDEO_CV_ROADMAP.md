@@ -12,9 +12,11 @@
 - `scripts/track_video_states.py`
 - `src/crbot/vision/annotation_queue.py`
 - `scripts/build_video_annotation_queue.py`
+- `scripts/export_video_annotation_frames.py`
 - Heuristic OpenCV segmentation for blue/red blobs as provisional entities.
 - Bootstrap multi-frame `track_id` assignment with confidence-aware frame filtering.
 - Priority queue generation for manual annotation with label budget summary.
+- Direct export of top-priority video frames for annotation UIs.
 
 This is a bootstrap for data plumbing, not final detection quality.
 

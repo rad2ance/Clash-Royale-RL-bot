@@ -82,6 +82,12 @@ Build prioritized manual-label queue + budget summary:
 python scripts/build_video_annotation_queue.py --states data/video_states/match1_tracks.jsonl --out-queue data/video_states/match1_annotation_queue.jsonl --out-summary data/video_states/match1_annotation_summary.json --top-k 300
 ```
 
+Export top queued frames for fast manual labeling:
+
+```powershell
+python scripts/export_video_annotation_frames.py --video replays/match1.mp4 --queue data/video_states/match1_annotation_queue.jsonl --out-dir data/video_states/match1_label_frames --top-k 300
+```
+
 Build BC dataset from labeled video sessions:
 
 ```powershell
