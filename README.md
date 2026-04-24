@@ -197,6 +197,15 @@ python scripts/build_card_registry_backlog.py --limit 500
 If no `needs_review` cards exist yet, this command now auto-falls back to include
 reviewed cards (disable with `--no-fallback-include-reviewed`).
 
+Auto-apply safe backlog suggestions (keyword-based spells/buildings):
+
+```powershell
+python scripts/auto_review_card_registry.py
+python scripts/auto_review_card_registry.py --apply
+python scripts/build_card_registry_backlog.py --limit 500
+python scripts/review_card_registry.py --summary --list --tag needs_review --limit 50
+```
+
 ## Important notes
 
 - This is not a full-fidelity Clash Royale simulator yet; it is an RL research harness.

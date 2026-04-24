@@ -229,10 +229,14 @@ class CrLikeSimEnv(gym.Env):
                 candidate_path = default_path
         if candidate_path is not None:
             registry = build_card_catalog_from_registry(path=candidate_path)
-            if len(registry) != int(self.cfg.n_cards):
+            if len(registry) < int(self.cfg.n_cards):
                 raise ValueError(
-                    f"Card registry size ({len(registry)}) does not match SimConfig.n_cards ({self.cfg.n_cards})."
+                    f"Card registry size ({len(registry)}) is smaller than SimConfig.n_cards ({self.cfg.n_cards})."
                 )
+            # Allow large full-roster registries while keeping smaller experimental
+            # n_cards configs stable by taking the lowest contiguous card IDs.
+            if len(registry) > int(self.cfg.n_cards):
+                registry = {cid: entry for cid, entry in registry.items() if int(cid) < int(self.cfg.n_cards)}
             catalog = {
                 int(cid): CardMeta(
                     card_id=int(entry.card_id),
