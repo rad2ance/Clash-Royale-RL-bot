@@ -180,6 +180,12 @@ python scripts/review_card_registry.py --summary --list --tag needs_review --lim
 python scripts/review_card_registry.py --tag needs_review --set-archetype troop_any --remove-tag needs_review --add-tag reviewed --apply
 ```
 
+Build prioritized review backlog with suggested archetypes:
+
+```powershell
+python scripts/build_card_registry_backlog.py --limit 500
+```
+
 ## Important notes
 
 - This is not a full-fidelity Clash Royale simulator yet; it is an RL research harness.

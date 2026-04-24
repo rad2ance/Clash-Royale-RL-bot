@@ -197,3 +197,108 @@ def apply_bulk_registry_review_edits(
 
     stats = {"touched_cards": touched}
     return registry_raw, stats
+
+
+def guess_archetype_for_card_name(name: str) -> tuple[str, str]:
+    n = str(name).strip().lower()
+    air_keywords = [
+        "minion",
+        "dragon",
+        "phoenix",
+        "bat",
+        "balloon",
+        "lava",
+        "flying",
+        "mega minion",
+        "skeleton dragons",
+    ]
+    spell_keywords = [
+        "zap",
+        "fireball",
+        "arrows",
+        "rocket",
+        "poison",
+        "rage",
+        "freeze",
+        "log",
+        "snowball",
+        "earthquake",
+        "tornado",
+        "mirror",
+        "clone",
+        "barrel",
+        "graveyard",
+        "lightning",
+    ]
+    building_keywords = [
+        "cannon",
+        "tesla",
+        "tower",
+        "x-bow",
+        "mortar",
+        "furnace",
+        "hut",
+        "collector",
+        "tombstone",
+        "cage",
+        "spawner",
+    ]
+    for kw in spell_keywords:
+        if kw in n:
+            return "spell_area", f"keyword:{kw}"
+    for kw in building_keywords:
+        if kw in n:
+            return "building_ground", f"keyword:{kw}"
+    for kw in air_keywords:
+        if kw in n:
+            return "troop_any", f"keyword:{kw}"
+    return "troop_ground", "default:troop_ground"
+
+
+def compute_review_priority(card: dict[str, Any]) -> float:
+    tags = {str(x).strip().lower() for x in card.get("tags", [])}
+    score = 0.0
+    if "needs_review" in tags:
+        score += 0.60
+    if "api_stub" in tags:
+        score += 0.25
+    if card.get("official_api_id") is None:
+        score += 0.10
+    extra = card.get("extra")
+    if isinstance(extra, dict) and extra.get("api_icon_url"):
+        score += 0.05
+    return float(min(1.0, max(0.0, score)))
+
+
+def build_registry_review_backlog(
+    registry_raw: dict[str, Any],
+    *,
+    limit: int = 500,
+    only_needs_review: bool = True,
+) -> list[dict[str, Any]]:
+    cards = registry_raw.get("cards", [])
+    if not isinstance(cards, list):
+        raise ValueError("Registry must contain list field 'cards'.")
+    out: list[dict[str, Any]] = []
+    for c in cards:
+        if not isinstance(c, dict):
+            continue
+        tags = {str(x).strip().lower() for x in c.get("tags", [])}
+        if only_needs_review and "needs_review" not in tags:
+            continue
+        suggested_arch, reason = guess_archetype_for_card_name(str(c.get("name", "")))
+        priority = compute_review_priority(c)
+        out.append(
+            {
+                "card_id": int(c.get("card_id", -1)),
+                "name": str(c.get("name", "")),
+                "official_api_id": c.get("official_api_id"),
+                "current_archetypes": list(c.get("archetypes", [])),
+                "suggested_archetype": suggested_arch,
+                "suggestion_reason": reason,
+                "priority": priority,
+                "tags": sorted(tags),
+            }
+        )
+    out.sort(key=lambda x: (float(x["priority"]), int(x["card_id"])), reverse=True)
+    return out[: max(0, int(limit))]

@@ -26,6 +26,7 @@
 - API-sync + review tooling:
   - `scripts/sync_cards_from_api.py`
   - `scripts/review_card_registry.py`
+  - `scripts/build_card_registry_backlog.py`
 - Deck-cycle hand replacement (deck queue instead of fully random redraw each play).
 - Card-type-aware instant combat profile in `step()`.
 - Stateful active units:
