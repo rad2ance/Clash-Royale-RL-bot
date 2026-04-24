@@ -84,6 +84,11 @@ class CardMeta:
     requires_bridge_lane_deploy: bool | None = None
     allow_enemy_side_deploy: bool | None = None
     can_cross_river_without_bridge: bool | None = None
+    spell_direct_damage_mult: float | None = None
+    spell_self_damage_mult: float | None = None
+    spell_king_share: float | None = None
+    spell_ignore_board_factor: bool | None = None
+    spell_ignore_range_factor: bool | None = None
 
 
 @dataclass
@@ -275,6 +280,21 @@ class CrLikeSimEnv(gym.Env):
                     can_cross_river_without_bridge=None
                     if not isinstance((entry.extra or {}).get("sim_profile"), dict)
                     else ((entry.extra or {}).get("sim_profile") or {}).get("can_cross_river_without_bridge"),
+                    spell_direct_damage_mult=None
+                    if not isinstance((entry.extra or {}).get("spell_profile"), dict)
+                    else ((entry.extra or {}).get("spell_profile") or {}).get("direct_damage_mult"),
+                    spell_self_damage_mult=None
+                    if not isinstance((entry.extra or {}).get("spell_profile"), dict)
+                    else ((entry.extra or {}).get("spell_profile") or {}).get("self_damage_mult"),
+                    spell_king_share=None
+                    if not isinstance((entry.extra or {}).get("spell_profile"), dict)
+                    else ((entry.extra or {}).get("spell_profile") or {}).get("king_share"),
+                    spell_ignore_board_factor=None
+                    if not isinstance((entry.extra or {}).get("spell_profile"), dict)
+                    else ((entry.extra or {}).get("spell_profile") or {}).get("ignore_board_factor"),
+                    spell_ignore_range_factor=None
+                    if not isinstance((entry.extra or {}).get("spell_profile"), dict)
+                    else ((entry.extra or {}).get("spell_profile") or {}).get("ignore_range_factor"),
                 )
                 for cid, entry in registry.items()
             }
@@ -504,6 +524,13 @@ class CrLikeSimEnv(gym.Env):
 
         if card.can_hit_air:
             self_damage_mult *= 0.9
+        if card.card_type == "spell":
+            if card.spell_direct_damage_mult is not None:
+                offense_mult *= max(0.05, float(card.spell_direct_damage_mult))
+            if card.spell_self_damage_mult is not None:
+                self_damage_mult *= max(0.0, float(card.spell_self_damage_mult))
+            if card.spell_king_share is not None:
+                king_share = float(np.clip(card.spell_king_share, 0.0, 1.0))
 
         return offense_mult, self_damage_mult, king_share
 
@@ -1197,6 +1224,11 @@ class CrLikeSimEnv(gym.Env):
             self.elixir = max(0.0, self.elixir - cost)
             board_factor = 1.0 - abs((x / max(1, self.cfg.grid_w - 1)) - 0.5)
             range_factor = 0.7 + 0.6 * (y / max(1, self.cfg.grid_h - 1))
+            if card.card_type == "spell":
+                if bool(card.spell_ignore_board_factor):
+                    board_factor = 1.0
+                if bool(card.spell_ignore_range_factor):
+                    range_factor = 1.0
             offense_mult, self_damage_mult, king_share = self._combat_profile(card)
 
             damage_to_enemy = float((8.0 + 5.0 * cost) * board_factor * range_factor)

@@ -157,6 +157,7 @@ Card metadata registry:
 - Optional `extra.sim_profile` supports per-card simulator tuning (range, cooldown, splash, projectile speed, move interval, air override).
 - Optional `extra.sim_profile` also supports targeting behavior overrides (e.g. `target_preference: high_hp`).
 - Optional `extra.deploy_profile` supports placement constraints (e.g. `requires_bridge_lane_deploy`, `allow_enemy_side_deploy`).
+- Optional `extra.spell_profile` supports spell-specific tuning (e.g. `direct_damage_mult`, `self_damage_mult`, `king_share`, `ignore_board_factor`, `ignore_range_factor`).
 
 Sync official card list into registry stubs (dry-run by default):
 

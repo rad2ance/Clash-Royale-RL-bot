@@ -28,16 +28,34 @@ cards:
     name: Arrows
     aliases: [arrows]
     elixir_cost: 2
+    extra:
+      spell_profile:
+        direct_damage_mult: 0.9
+        self_damage_mult: 0.15
+        king_share: 0.35
+        ignore_board_factor: true
   - card_id: 1
     archetypes: [spell_area]
     name: Zap
     aliases: [zap]
     elixir_cost: 3
+    extra:
+      spell_profile:
+        direct_damage_mult: 0.8
+        self_damage_mult: 0.1
+        king_share: 0.25
+        ignore_board_factor: true
+        ignore_range_factor: true
   - card_id: 2
     archetypes: [spell_area]
     name: Fireball
     aliases: [fireball]
     elixir_cost: 4
+    extra:
+      spell_profile:
+        direct_damage_mult: 1.25
+        self_damage_mult: 0.2
+        king_share: 0.45
   - card_id: 3
     archetypes: [building_ground]
     name: Cannon

@@ -1,4 +1,5 @@
 from collections import deque
+from dataclasses import replace
 
 import numpy as np
 
@@ -304,6 +305,51 @@ def test_building_profile_has_lower_enemy_damage_than_troop_same_cost() -> None:
     assert building_info["card_type"] == "building"
     assert troop_info["card_type"] == "troop"
     assert float(building_info["damage_to_enemy"]) < float(troop_info["damage_to_enemy"])
+
+
+def test_spell_profile_direct_damage_override_increases_enemy_damage() -> None:
+    env_base = CrLikeSimEnv(config=SimConfig(enemy_spawn_chance=0.0))
+    env_boost = CrLikeSimEnv(config=SimConfig(enemy_spawn_chance=0.0))
+    spell_id = 1
+    y = max(0, env_base.deploy_min_y - 2)
+    x = env_base.cfg.grid_w // 2
+
+    for env in (env_base, env_boost):
+        env.reset(seed=77)
+        env.elixir = env.cfg.max_elixir
+        env.hand_ids[:] = np.array([spell_id, spell_id, spell_id, spell_id], dtype=np.int32)
+        env._sync_hand_costs_from_ids()
+
+    base_card = env_boost.get_card_meta(spell_id)
+    env_boost.card_catalog[spell_id] = replace(base_card, spell_direct_damage_mult=2.0)
+
+    action = 1 + y * env_base.cfg.grid_w + x
+    _, _, _, _, info_base = env_base.step(action)
+    _, _, _, _, info_boost = env_boost.step(action)
+    assert float(info_boost["damage_to_enemy"]) > float(info_base["damage_to_enemy"])
+
+
+def test_spell_profile_ignore_board_factor_removes_x_position_penalty() -> None:
+    env_center = CrLikeSimEnv(config=SimConfig(enemy_spawn_chance=0.0))
+    env_edge = CrLikeSimEnv(config=SimConfig(enemy_spawn_chance=0.0))
+    spell_id = 1
+    y = max(0, env_center.deploy_min_y - 2)
+    center_x = env_center.cfg.grid_w // 2
+    edge_x = 0
+
+    for env in (env_center, env_edge):
+        env.reset(seed=78)
+        env.elixir = env.cfg.max_elixir
+        env.hand_ids[:] = np.array([spell_id, spell_id, spell_id, spell_id], dtype=np.int32)
+        env._sync_hand_costs_from_ids()
+        base = env.get_card_meta(spell_id)
+        env.card_catalog[spell_id] = replace(base, spell_ignore_board_factor=True)
+
+    action_center = 1 + y * env_center.cfg.grid_w + center_x
+    action_edge = 1 + y * env_edge.cfg.grid_w + edge_x
+    _, _, _, _, info_center = env_center.step(action_center)
+    _, _, _, _, info_edge = env_edge.step(action_edge)
+    assert abs(float(info_center["damage_to_enemy"]) - float(info_edge["damage_to_enemy"])) < 1e-6
 
 
 def test_render_returns_rgb_array() -> None:

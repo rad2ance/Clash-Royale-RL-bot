@@ -18,6 +18,11 @@
   - `deploy_profile.requires_bridge_lane_deploy`
   - `deploy_profile.allow_enemy_side_deploy`
   - `sim_profile.can_cross_river_without_bridge`
+- Per-card spell-effect overrides supported via registry:
+  - `spell_profile.direct_damage_mult`
+  - `spell_profile.self_damage_mult`
+  - `spell_profile.king_share`
+  - `spell_profile.ignore_board_factor` / `ignore_range_factor`
 - API-sync + review tooling:
   - `scripts/sync_cards_from_api.py`
   - `scripts/review_card_registry.py`
