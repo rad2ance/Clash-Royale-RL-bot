@@ -29,6 +29,9 @@
 - Evaluation tooling:
   - `scripts/eval_policy.py`
   - `scripts/compare_eval_runs.py`
+- Match-flow:
+  - configurable regulation time
+  - optional one-shot overtime extension when regulation ends with both kings alive
 
 ## Remaining High-Value Gaps
 - True card mechanics:
@@ -42,7 +45,8 @@
   - partial lane-objective pathing around bridges/towers
   - more realistic movement speeds and stopping logic
 - Match rules:
-  - overtime/sudden death and tie-break details
+  - basic single-phase overtime extension (simplified sudden-death proxy)
+  - overtime/sudden death tie-break details
   - crown logic and objective priorities
 - Observation realism:
   - richer state channels (unit maps, explicit card cycle exposure, opponent hidden info model)

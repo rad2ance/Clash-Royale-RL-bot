@@ -801,3 +801,46 @@ def test_state_snapshot_contains_next_card_from_cycle() -> None:
     env._draw_cycle = deque([11, 10, 9])
     snap = env.get_state_snapshot()
     assert int(snap.next_card_id) == 11
+
+
+def test_overtime_starts_once_when_regulation_time_expires() -> None:
+    env = CrLikeSimEnv(
+        config=SimConfig(
+            enemy_spawn_chance=0.0,
+            max_steps=100,
+            match_time_seconds=1.0,
+            step_seconds=1.0,
+            enable_overtime=True,
+            overtime_seconds=3.0,
+        )
+    )
+    env.reset(seed=0)
+    _, _, terminated, _, info = env.step(env.noop_action)
+    assert terminated is False
+    assert bool(info["overtime_started"]) is True
+    assert bool(info["in_overtime"]) is True
+    assert float(env.time_left) == 3.0
+
+    # Overtime should not restart after it has been consumed.
+    for _ in range(4):
+        _, _, terminated, _, info = env.step(env.noop_action)
+    assert terminated is True
+    assert bool(info["overtime_started"]) is False
+
+
+def test_match_ends_at_timeout_when_overtime_disabled() -> None:
+    env = CrLikeSimEnv(
+        config=SimConfig(
+            enemy_spawn_chance=0.0,
+            max_steps=100,
+            match_time_seconds=1.0,
+            step_seconds=1.0,
+            enable_overtime=False,
+            overtime_seconds=3.0,
+        )
+    )
+    env.reset(seed=0)
+    _, _, terminated, _, info = env.step(env.noop_action)
+    assert terminated is True
+    assert bool(info["overtime_started"]) is False
+    assert bool(info["in_overtime"]) is False

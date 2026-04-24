@@ -12,7 +12,10 @@ from gymnasium import spaces
 @dataclass(frozen=True)
 class SimConfig:
     max_steps: int = 900
+    match_time_seconds: float = 180.0
     step_seconds: float = 0.2
+    enable_overtime: bool = True
+    overtime_seconds: float = 60.0
     max_elixir: float = 10.0
     elixir_regen_per_step: float = 0.1
     king_hp: float = 4000.0
@@ -163,7 +166,9 @@ class CrLikeSimEnv(gym.Env):
         self.observation_space = spaces.Dict(obs_spaces)
 
         self.step_count = 0
-        self.time_left = 180.0
+        self.time_left = float(self.cfg.match_time_seconds)
+        self.in_overtime = False
+        self._overtime_used = False
         self.elixir = 5.0
         self.own_king_hp = self.cfg.king_hp
         self.enemy_king_hp = self.cfg.king_hp
@@ -283,16 +288,19 @@ class CrLikeSimEnv(gym.Env):
         return np.clip(density / max_count, 0.0, 1.0)
 
     def build_observation_from_state(self, state: SimStateSnapshot) -> dict[str, np.ndarray]:
+        time_norm = max(1.0, float(max(self.cfg.match_time_seconds, self.cfg.overtime_seconds)))
         global_vec = np.array(
             [
-                state.time_left / 180.0,
+                state.time_left / time_norm,
                 state.elixir / self.cfg.max_elixir,
                 state.own_king_hp / self.cfg.king_hp,
                 state.enemy_king_hp / self.cfg.king_hp,
                 state.own_princess_hps.mean() / self.cfg.princess_hp,
                 state.enemy_princess_hps.mean() / self.cfg.princess_hp,
                 float(state.step_count) / float(self.cfg.max_steps),
-                1.0 if state.time_left <= 60.0 else 0.0,  # double-elixir-ish phase
+                1.0
+                if self.in_overtime or state.time_left <= min(60.0, float(self.cfg.match_time_seconds))
+                else 0.0,
             ],
             dtype=np.float32,
         )
@@ -859,7 +867,9 @@ class CrLikeSimEnv(gym.Env):
         if seed is not None:
             self.rng = np.random.default_rng(seed)
         self.step_count = 0
-        self.time_left = 180.0
+        self.time_left = float(self.cfg.match_time_seconds)
+        self.in_overtime = False
+        self._overtime_used = False
         self.elixir = 5.0
         self.own_king_hp = self.cfg.king_hp
         self.enemy_king_hp = self.cfg.king_hp
@@ -922,6 +932,18 @@ class CrLikeSimEnv(gym.Env):
         self.elixir = min(self.cfg.max_elixir, self.elixir + self.cfg.elixir_regen_per_step)
         self.time_left = max(0.0, self.time_left - self.cfg.step_seconds)
         self.step_count += 1
+        overtime_started = False
+        if (
+            self.cfg.enable_overtime
+            and not self._overtime_used
+            and self.time_left <= 0.0
+            and self.own_king_hp > 0.0
+            and self.enemy_king_hp > 0.0
+        ):
+            self.time_left = float(self.cfg.overtime_seconds)
+            self.in_overtime = True
+            self._overtime_used = True
+            overtime_started = True
 
         reward = (damage_to_enemy - 0.6 * damage_to_self) / 40.0
         if not legal_action:
@@ -954,6 +976,8 @@ class CrLikeSimEnv(gym.Env):
             "own_active_units": len(self.own_units),
             "enemy_active_units": len(self.enemy_units),
             "pending_projectiles": len(self.pending_projectiles),
+            "in_overtime": bool(self.in_overtime),
+            "overtime_started": bool(overtime_started),
         }
         return self._get_obs(), float(reward), terminated, truncated, info
 
