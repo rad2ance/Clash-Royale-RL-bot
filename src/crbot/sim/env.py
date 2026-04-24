@@ -40,6 +40,7 @@ class SimConfig:
     # How many rows before the river units start aligning to their bridge lane.
     bridge_approach_rows: int = 3
     enemy_spawn_chance: float = 0.08
+    enemy_air_spawn_prob: float = 0.25
     troop_lifetime_steps: int = 18
     building_lifetime_steps: int = 28
     troop_attack_range_cells: int = 2
@@ -467,12 +468,22 @@ class CrLikeSimEnv(gym.Env):
             int(move_interval),
         )
 
+    def _is_air_troop_card(self, card: CardMeta) -> bool:
+        """
+        Deterministic air-archetype proxy for simplified troop metadata.
+
+        In the absence of per-card canonical mechanics, we treat "any"-targeting
+        troops as air-capable flying units.
+        """
+        return card.card_type == "troop" and card.target_type == "any" and bool(card.can_hit_air)
+
     def _spawn_friendly_unit(self, card: CardMeta, x: int, y: int, cost: float) -> None:
         if card.card_type == "spell":
             return
         dps, hp, ttl, attack_range, cooldown, hit_damage, splash, projectile_speed, move_interval = self._unit_profile(
             card, cost
         )
+        is_air = self._is_air_troop_card(card)
         self.own_units.append(
             ActiveUnit(
                 x=int(np.clip(x, 0, self.cfg.grid_w - 1)),
@@ -483,7 +494,7 @@ class CrLikeSimEnv(gym.Env):
                 card_type=card.card_type,
                 target_type=card.target_type,
                 can_hit_air=card.can_hit_air,
-                is_air=False,
+                is_air=bool(is_air),
                 is_enemy=False,
                 attack_range=attack_range,
                 attack_cooldown_steps=cooldown,
@@ -502,6 +513,10 @@ class CrLikeSimEnv(gym.Env):
         x = int(self.rng.integers(0, self.cfg.grid_w))
         y = int(self.rng.integers(0, max(1, self.deploy_min_y - 1)))
         cost = float(self.rng.integers(2, 6))
+        is_air = bool(self.rng.uniform() < float(np.clip(self.cfg.enemy_air_spawn_prob, 0.0, 1.0)))
+        target_type = "any" if is_air else "ground"
+        can_hit_air = bool(is_air)
+        move_interval = 1 if is_air else 2
         self.enemy_units.append(
             ActiveUnit(
                 x=x,
@@ -510,9 +525,9 @@ class CrLikeSimEnv(gym.Env):
                 dps=3.8 * cost,
                 ttl=max(6, int(self.cfg.troop_lifetime_steps * 0.7)),
                 card_type="troop",
-                target_type="ground",
-                can_hit_air=False,
-                is_air=False,
+                target_type=target_type,
+                can_hit_air=can_hit_air,
+                is_air=is_air,
                 is_enemy=True,
                 attack_range=self.cfg.troop_attack_range_cells,
                 attack_cooldown_steps=max(1, int(self.cfg.attack_cooldown_steps)),
@@ -520,7 +535,7 @@ class CrLikeSimEnv(gym.Env):
                 hit_damage=float(3.8 * cost * self.cfg.step_seconds * max(1, int(self.cfg.attack_cooldown_steps))),
                 splash_radius=0.0,
                 projectile_speed_cells_per_step=float(self.cfg.projectile_speed_cells_per_step),
-                move_interval_steps=2,
+                move_interval_steps=move_interval,
                 move_cooldown_remaining=0,
             )
         )
@@ -770,9 +785,10 @@ class CrLikeSimEnv(gym.Env):
         dmg_enemy += proj_enemy
         dmg_self += proj_self
 
-        occupied_counts: dict[tuple[int, int], int] = {}
+        occupied_counts: dict[tuple[int, int, str], int] = {}
         for u in self.own_units + self.enemy_units:
-            key = (int(u.x), int(u.y))
+            layer = "air" if bool(u.is_air) else "ground"
+            key = (int(u.x), int(u.y), layer)
             occupied_counts[key] = occupied_counts.get(key, 0) + 1
 
         max_per_cell = max(1, int(self.cfg.max_units_per_cell))
@@ -780,8 +796,9 @@ class CrLikeSimEnv(gym.Env):
         def try_move(unit: ActiveUnit, new_x: int, new_y: int) -> bool:
             nx = int(np.clip(new_x, 0, self.cfg.grid_w - 1))
             ny = int(np.clip(new_y, 0, self.cfg.grid_h - 1))
-            cur = (int(unit.x), int(unit.y))
-            nxt = (nx, ny)
+            layer = "air" if bool(unit.is_air) else "ground"
+            cur = (int(unit.x), int(unit.y), layer)
+            nxt = (nx, ny, layer)
             if nxt == cur:
                 return False
             if occupied_counts.get(nxt, 0) >= max_per_cell:
@@ -801,27 +818,43 @@ class CrLikeSimEnv(gym.Env):
                 unit.move_cooldown_remaining = max(0, int(unit.move_cooldown_remaining) - 1)
                 continue
             next_y = max(0, unit.y - 1)
-            in_approach = self._in_bridge_approach_band(y=unit.y, moving_to_enemy=True)
-            if (in_approach or self._is_river_row(next_y)) and not self._is_bridge_lane_x(unit.x):
-                target_x = self._nearest_bridge_x(unit.x)
-                if unit.x < target_x:
-                    try_move(unit, unit.x + 1, unit.y)
-                elif unit.x > target_x:
-                    try_move(unit, unit.x - 1, unit.y)
-            elif unit.y <= self.river_top_y:
-                objective_x = self._lane_objective_x(attacking_enemy=True, unit=unit)
-                if unit.x < objective_x:
-                    moved = try_move(unit, unit.x + 1, unit.y)
-                    if not moved:
-                        try_move(unit, unit.x, next_y)
-                elif unit.x > objective_x:
-                    moved = try_move(unit, unit.x - 1, unit.y)
-                    if not moved:
+            if unit.is_air:
+                if unit.y <= self.river_top_y:
+                    objective_x = self._lane_objective_x(attacking_enemy=True, unit=unit)
+                    if unit.x < objective_x:
+                        moved = try_move(unit, unit.x + 1, unit.y)
+                        if not moved:
+                            try_move(unit, unit.x, next_y)
+                    elif unit.x > objective_x:
+                        moved = try_move(unit, unit.x - 1, unit.y)
+                        if not moved:
+                            try_move(unit, unit.x, next_y)
+                    else:
                         try_move(unit, unit.x, next_y)
                 else:
                     try_move(unit, unit.x, next_y)
             else:
-                try_move(unit, unit.x, next_y)
+                in_approach = self._in_bridge_approach_band(y=unit.y, moving_to_enemy=True)
+                if (in_approach or self._is_river_row(next_y)) and not self._is_bridge_lane_x(unit.x):
+                    target_x = self._nearest_bridge_x(unit.x)
+                    if unit.x < target_x:
+                        try_move(unit, unit.x + 1, unit.y)
+                    elif unit.x > target_x:
+                        try_move(unit, unit.x - 1, unit.y)
+                elif unit.y <= self.river_top_y:
+                    objective_x = self._lane_objective_x(attacking_enemy=True, unit=unit)
+                    if unit.x < objective_x:
+                        moved = try_move(unit, unit.x + 1, unit.y)
+                        if not moved:
+                            try_move(unit, unit.x, next_y)
+                    elif unit.x > objective_x:
+                        moved = try_move(unit, unit.x - 1, unit.y)
+                        if not moved:
+                            try_move(unit, unit.x, next_y)
+                    else:
+                        try_move(unit, unit.x, next_y)
+                else:
+                    try_move(unit, unit.x, next_y)
             unit.move_cooldown_remaining = max(0, int(unit.move_interval_steps) - 1)
 
         for unit in sorted(self.enemy_units, key=lambda u: (-u.y, u.x)):
@@ -833,27 +866,43 @@ class CrLikeSimEnv(gym.Env):
                 unit.move_cooldown_remaining = max(0, int(unit.move_cooldown_remaining) - 1)
                 continue
             next_y = min(self.cfg.grid_h - 1, unit.y + 1)
-            in_approach = self._in_bridge_approach_band(y=unit.y, moving_to_enemy=False)
-            if (in_approach or self._is_river_row(next_y)) and not self._is_bridge_lane_x(unit.x):
-                target_x = self._nearest_bridge_x(unit.x)
-                if unit.x < target_x:
-                    try_move(unit, unit.x + 1, unit.y)
-                elif unit.x > target_x:
-                    try_move(unit, unit.x - 1, unit.y)
-            elif unit.y >= self.river_bottom_y:
-                objective_x = self._lane_objective_x(attacking_enemy=False, unit=unit)
-                if unit.x < objective_x:
-                    moved = try_move(unit, unit.x + 1, unit.y)
-                    if not moved:
-                        try_move(unit, unit.x, next_y)
-                elif unit.x > objective_x:
-                    moved = try_move(unit, unit.x - 1, unit.y)
-                    if not moved:
+            if unit.is_air:
+                if unit.y >= self.river_bottom_y:
+                    objective_x = self._lane_objective_x(attacking_enemy=False, unit=unit)
+                    if unit.x < objective_x:
+                        moved = try_move(unit, unit.x + 1, unit.y)
+                        if not moved:
+                            try_move(unit, unit.x, next_y)
+                    elif unit.x > objective_x:
+                        moved = try_move(unit, unit.x - 1, unit.y)
+                        if not moved:
+                            try_move(unit, unit.x, next_y)
+                    else:
                         try_move(unit, unit.x, next_y)
                 else:
                     try_move(unit, unit.x, next_y)
             else:
-                try_move(unit, unit.x, next_y)
+                in_approach = self._in_bridge_approach_band(y=unit.y, moving_to_enemy=False)
+                if (in_approach or self._is_river_row(next_y)) and not self._is_bridge_lane_x(unit.x):
+                    target_x = self._nearest_bridge_x(unit.x)
+                    if unit.x < target_x:
+                        try_move(unit, unit.x + 1, unit.y)
+                    elif unit.x > target_x:
+                        try_move(unit, unit.x - 1, unit.y)
+                elif unit.y >= self.river_bottom_y:
+                    objective_x = self._lane_objective_x(attacking_enemy=False, unit=unit)
+                    if unit.x < objective_x:
+                        moved = try_move(unit, unit.x + 1, unit.y)
+                        if not moved:
+                            try_move(unit, unit.x, next_y)
+                    elif unit.x > objective_x:
+                        moved = try_move(unit, unit.x - 1, unit.y)
+                        if not moved:
+                            try_move(unit, unit.x, next_y)
+                    else:
+                        try_move(unit, unit.x, next_y)
+                else:
+                    try_move(unit, unit.x, next_y)
             unit.move_cooldown_remaining = max(0, int(unit.move_interval_steps) - 1)
 
         self.own_units = [u for u in self.own_units if u.ttl > 0 and u.hp > 0.0]
@@ -1050,9 +1099,12 @@ class CrLikeSimEnv(gym.Env):
             self._overtime_used = True
             overtime_started = True
 
-        reward = (damage_to_enemy - 0.6 * damage_to_self) / 40.0
-        if not legal_action:
-            reward -= 0.05
+        reward_damage = (damage_to_enemy - 0.6 * damage_to_self) / 40.0
+        reward_illegal_penalty = -0.05 if not legal_action else 0.0
+        reward_terminal_king_bonus = 0.0
+        reward_terminal_hp_tiebreak = 0.0
+        reward_terminal_crowns = 0.0
+        reward = reward_damage + reward_illegal_penalty
 
         winner = "ongoing"
         outcome_reason = "none"
@@ -1061,16 +1113,20 @@ class CrLikeSimEnv(gym.Env):
         if terminated:
             winner, outcome_reason = self._resolve_match_outcome()
             if winner == "player" and outcome_reason == "king_down":
-                reward += 2.0
+                reward_terminal_king_bonus = 2.0
+                reward += reward_terminal_king_bonus
             elif winner == "enemy" and outcome_reason == "king_down":
-                reward -= 2.0
+                reward_terminal_king_bonus = -2.0
+                reward += reward_terminal_king_bonus
             else:
                 hp_delta = (self.enemy_king_hp + self.enemy_princess_hps.sum()) - (
                     self.own_king_hp + self.own_princess_hps.sum()
                 )
-                reward += float(np.clip(-hp_delta / 3000.0, -1.0, 1.0))
+                reward_terminal_hp_tiebreak = float(np.clip(-hp_delta / 3000.0, -1.0, 1.0))
+                reward += reward_terminal_hp_tiebreak
                 player_crowns, enemy_crowns = self._crown_score()
-                reward += 0.4 * float(player_crowns - enemy_crowns)
+                reward_terminal_crowns = 0.4 * float(player_crowns - enemy_crowns)
+                reward += reward_terminal_crowns
 
         player_crowns, enemy_crowns = self._crown_score()
 
@@ -1094,6 +1150,14 @@ class CrLikeSimEnv(gym.Env):
             "enemy_crowns": int(enemy_crowns),
             "winner": winner,
             "outcome_reason": outcome_reason,
+            "reward_components": {
+                "damage": float(reward_damage),
+                "illegal_action_penalty": float(reward_illegal_penalty),
+                "terminal_king_bonus": float(reward_terminal_king_bonus),
+                "terminal_hp_tiebreak": float(reward_terminal_hp_tiebreak),
+                "terminal_crowns": float(reward_terminal_crowns),
+            },
+            "reward_total": float(reward),
         }
         return self._get_obs(), float(reward), terminated, truncated, info
 

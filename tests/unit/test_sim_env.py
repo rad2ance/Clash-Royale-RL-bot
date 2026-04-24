@@ -32,6 +32,25 @@ def test_env_reset_and_step_shapes() -> None:
     assert "pending_projectiles" in step_info
     assert "legal_action_mask" in step_info
     assert step_info["legal_action_mask"].shape == (env.n_actions,)
+    assert "reward_components" in step_info
+    assert "reward_total" in step_info
+    rc = step_info["reward_components"]
+    assert set(rc.keys()) == {
+        "damage",
+        "illegal_action_penalty",
+        "terminal_king_bonus",
+        "terminal_hp_tiebreak",
+        "terminal_crowns",
+    }
+    total_from_parts = (
+        float(rc["damage"])
+        + float(rc["illegal_action_penalty"])
+        + float(rc["terminal_king_bonus"])
+        + float(rc["terminal_hp_tiebreak"])
+        + float(rc["terminal_crowns"])
+    )
+    assert abs(float(step_info["reward_total"]) - total_from_parts) < 1e-6
+    assert abs(float(reward) - float(step_info["reward_total"])) < 1e-6
 
     next_flat = flatten_observation(next_obs)
     assert next_flat.shape == flat.shape
@@ -503,6 +522,52 @@ def test_friendly_troop_can_enter_river_on_bridge_lane() -> None:
     assert unit.y == env.river_bottom_y
 
 
+def test_friendly_air_unit_crosses_river_off_bridge_lane() -> None:
+    env = CrLikeSimEnv(config=SimConfig(enemy_spawn_chance=0.0))
+    env.reset(seed=0)
+    start_y = env.river_bottom_y + 1
+    start_x = 0  # intentionally not a bridge lane
+    env.own_units = [
+        ActiveUnit(
+            x=start_x,
+            y=start_y,
+            hp=40.0,
+            dps=8.0,
+            ttl=6,
+            card_type="troop",
+            target_type="any",
+            can_hit_air=True,
+            is_air=True,
+            is_enemy=False,
+            move_interval_steps=1,
+        )
+    ]
+    env.step(env.noop_action)
+    unit = env.own_units[0]
+    # Air units do not require bridge alignment to cross river rows.
+    assert unit.y == env.river_bottom_y
+    assert unit.x == start_x
+
+
+def test_spawned_any_target_troop_is_marked_as_air() -> None:
+    env = CrLikeSimEnv(config=SimConfig(enemy_spawn_chance=0.0))
+    env.reset(seed=0)
+    any_troop_id = env.cfg.spell_card_count + env.cfg.building_card_count + 1
+    card = env.get_card_meta(any_troop_id)
+    assert card.target_type == "any"
+    env._spawn_friendly_unit(card=card, x=env.cfg.grid_w // 2, y=env.deploy_min_y + 1, cost=float(card.elixir_cost))
+    assert env.own_units
+    assert env.own_units[-1].is_air is True
+
+
+def test_enemy_spawn_can_emit_air_units() -> None:
+    env = CrLikeSimEnv(config=SimConfig(enemy_spawn_chance=1.0, enemy_air_spawn_prob=1.0))
+    env.reset(seed=0)
+    env.step(env.noop_action)
+    assert env.enemy_units
+    assert any(u.is_air for u in env.enemy_units)
+
+
 def test_state_snapshot_and_observation_builder_roundtrip() -> None:
     env = CrLikeSimEnv()
     env.reset(seed=0)
@@ -597,6 +662,44 @@ def test_unit_does_not_sidestep_into_occupied_bridge_cell() -> None:
     moved = next(u for u in env.own_units if u is mover)
     assert moved.x == start_x
     assert moved.y == start_y
+
+
+def test_air_and_ground_units_can_share_cell_layered_occupancy() -> None:
+    env = CrLikeSimEnv(config=SimConfig(enemy_spawn_chance=0.0, max_units_per_cell=1))
+    env.reset(seed=0)
+    start_y = min(env.cfg.grid_h - 1, env.deploy_min_y + 3)
+    x = env.cfg.grid_w // 2
+    air_mover = ActiveUnit(
+        x=x,
+        y=start_y,
+        hp=40.0,
+        dps=8.0,
+        ttl=5,
+        card_type="troop",
+        target_type="any",
+        can_hit_air=True,
+        is_air=True,
+        is_enemy=False,
+        move_interval_steps=1,
+    )
+    ground_blocker = ActiveUnit(
+        x=x,
+        y=start_y - 1,
+        hp=40.0,
+        dps=8.0,
+        ttl=5,
+        card_type="troop",
+        target_type="ground",
+        can_hit_air=False,
+        is_air=False,
+        is_enemy=False,
+        move_interval_steps=2,
+    )
+    env.own_units = [air_mover, ground_blocker]
+    env.step(env.noop_action)
+    moved = next(u for u in env.own_units if u is air_mover)
+    # Air mover should be allowed into the occupied ground cell.
+    assert moved.y == start_y - 1
 
 
 def test_left_lane_unit_pressures_left_princess_more() -> None:
@@ -872,6 +975,7 @@ def test_terminal_outcome_prefers_crown_count_over_hp() -> None:
     assert terminated is True
     assert info["winner"] == "player"
     assert info["outcome_reason"] == "crowns"
+    assert float(info["reward_components"]["terminal_crowns"]) > 0.0
 
 
 def test_terminal_outcome_uses_hp_tiebreak_when_crowns_equal() -> None:

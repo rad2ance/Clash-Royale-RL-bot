@@ -21,6 +21,17 @@ def main() -> None:
     parser.add_argument("--max-frames", type=int, default=0, help="Limit processed frames (0 means all).")
     parser.add_argument("--stride", type=int, default=3, help="Process every Nth frame.")
     parser.add_argument("--min-blob-area", type=int, default=24)
+    parser.add_argument(
+        "--min-frame-confidence",
+        type=float,
+        default=0.10,
+        help="Minimum confidence required before entity extraction is emitted.",
+    )
+    parser.add_argument(
+        "--skip-low-confidence",
+        action="store_true",
+        help="Drop low-confidence frames from JSONL output entirely.",
+    )
     args = parser.parse_args()
 
     cv2 = _require_cv2()
@@ -32,11 +43,15 @@ def main() -> None:
     if not cap.isOpened():
         raise RuntimeError(f"Failed to open video: {video_path}")
 
-    extractor = BaselineCvStateExtractor(min_blob_area=args.min_blob_area)
+    extractor = BaselineCvStateExtractor(
+        min_blob_area=args.min_blob_area,
+        min_frame_confidence_for_entities=args.min_frame_confidence,
+    )
     fps = float(cap.get(cv2.CAP_PROP_FPS) or 30.0)
     states = []
     frame_idx = 0
     processed = 0
+    skipped_low_conf = 0
     try:
         while True:
             ok, frame = cap.read()
@@ -46,7 +61,12 @@ def main() -> None:
                 frame_idx += 1
                 continue
             ts = frame_idx / max(1e-6, fps)
-            states.append(extractor.extract(frame, ts))
+            state = extractor.extract(frame, ts)
+            if args.skip_low_conf and state.frame_confidence < args.min_frame_confidence:
+                skipped_low_conf += 1
+                frame_idx += 1
+                continue
+            states.append(state)
             processed += 1
             frame_idx += 1
             if args.max_frames > 0 and processed >= args.max_frames:
@@ -55,7 +75,10 @@ def main() -> None:
         cap.release()
 
     save_vision_states_jsonl(args.out, states)
-    print(f"[done] states={len(states)} -> {Path(args.out).resolve()}")
+    print(
+        f"[done] states={len(states)} skipped_low_conf={skipped_low_conf} min_conf={args.min_frame_confidence:.2f}"
+        f" -> {Path(args.out).resolve()}"
+    )
 
 
 if __name__ == "__main__":

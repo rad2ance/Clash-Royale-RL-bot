@@ -14,13 +14,16 @@
 - Card-type-aware instant combat profile in `step()`.
 - Stateful active units:
   - troop/building spawns
+  - deterministic air-troop archetype tagging for "any"-targeting troops
   - TTL and HP decay
   - attack range + cooldown-based unit/tower attacks
   - optional projectile-travel mode with delayed impacts and splash radius
   - closest-target duel logic
   - bridge-aware river crossing pathing
+  - air-vs-ground pathing split (air units can cross river off-bridge)
   - post-river lane-objective drift toward alive side towers
   - per-cell occupancy cap to prevent unrealistic unit stacking
+  - layered occupancy (air and ground units no longer block each other by default)
   - lane-aware tower pressure targeting + princess fallback retargeting
   - per-unit lane target lock with retarget on objective destruction
   - archetype-aware projectile speed/splash profiles (in projectile mode)
@@ -31,6 +34,13 @@
 - Evaluation tooling:
   - `scripts/eval_policy.py`
   - `scripts/compare_eval_runs.py`
+- Reward diagnostics:
+  - per-step reward decomposition included in `info["reward_components"]`
+  - explicit `info["reward_total"]` for sanity checks/debugging
+- Vision extraction baseline upgrades:
+  - explicit normalized UI anchors in extractor output
+  - arena-scoped entity detection to reduce hand/UI false positives
+  - per-frame confidence estimation and low-confidence gating
 - Match-flow:
   - configurable regulation time
   - optional one-shot overtime extension when regulation ends with both kings alive

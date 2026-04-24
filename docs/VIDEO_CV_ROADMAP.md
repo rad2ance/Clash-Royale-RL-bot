@@ -8,7 +8,10 @@
 ## Current Baseline (Implemented)
 - `src/crbot/vision/state_extractor.py`
 - `scripts/extract_video_states.py`
+- `src/crbot/vision/tracking.py`
+- `scripts/track_video_states.py`
 - Heuristic OpenCV segmentation for blue/red blobs as provisional entities.
+- Bootstrap multi-frame `track_id` assignment with confidence-aware frame filtering.
 
 This is a bootstrap for data plumbing, not final detection quality.
 
