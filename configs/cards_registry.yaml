@@ -1,85 +1,85 @@
+version: 2
+
+archetypes:
+  spell_area:
+    card_type: spell
+    target_type: area
+    can_hit_air: true
+    tags: [spell]
+  building_ground:
+    card_type: building
+    target_type: ground
+    can_hit_air: false
+    tags: [building]
+  troop_ground:
+    card_type: troop
+    target_type: ground
+    can_hit_air: false
+    tags: [troop, ground]
+  troop_any:
+    inherits: troop_ground
+    target_type: any
+    can_hit_air: true
+    tags: [troop, air_capable]
+
 cards:
   - card_id: 0
-    name: "Arrows"
-    aliases: ["arrows"]
+    archetypes: [spell_area]
+    name: Arrows
+    aliases: [arrows]
     elixir_cost: 2
-    card_type: "spell"
-    target_type: "area"
-    can_hit_air: true
   - card_id: 1
-    name: "Zap"
-    aliases: ["zap"]
+    archetypes: [spell_area]
+    name: Zap
+    aliases: [zap]
     elixir_cost: 3
-    card_type: "spell"
-    target_type: "area"
-    can_hit_air: true
   - card_id: 2
-    name: "Fireball"
-    aliases: ["fireball"]
+    archetypes: [spell_area]
+    name: Fireball
+    aliases: [fireball]
     elixir_cost: 4
-    card_type: "spell"
-    target_type: "area"
-    can_hit_air: true
   - card_id: 3
-    name: "Cannon"
-    aliases: ["cannon"]
+    archetypes: [building_ground]
+    name: Cannon
+    aliases: [cannon]
     elixir_cost: 4
-    card_type: "building"
-    target_type: "ground"
-    can_hit_air: false
   - card_id: 4
-    name: "Tesla"
-    aliases: ["tesla"]
+    archetypes: [building_ground]
+    name: Tesla
+    aliases: [tesla]
     elixir_cost: 5
-    card_type: "building"
-    target_type: "ground"
-    can_hit_air: false
   - card_id: 5
-    name: "Knight"
-    aliases: ["knight"]
+    archetypes: [troop_ground]
+    name: Knight
+    aliases: [knight]
     elixir_cost: 2
-    card_type: "troop"
-    target_type: "ground"
-    can_hit_air: false
   - card_id: 6
-    name: "Barbarians"
-    aliases: ["barbarians", "barbs"]
+    archetypes: [troop_any]
+    name: Barbarians
+    aliases: [barbarians, barbs]
     elixir_cost: 3
-    card_type: "troop"
-    target_type: "any"
-    can_hit_air: true
   - card_id: 7
-    name: "Musketeer"
-    aliases: ["musketeer", "musk"]
+    archetypes: [troop_ground]
+    name: Musketeer
+    aliases: [musketeer, musk]
     elixir_cost: 4
-    card_type: "troop"
-    target_type: "ground"
-    can_hit_air: false
   - card_id: 8
-    name: "Archers"
-    aliases: ["archers"]
+    archetypes: [troop_any]
+    name: Archers
+    aliases: [archers]
     elixir_cost: 5
-    card_type: "troop"
-    target_type: "any"
-    can_hit_air: true
   - card_id: 9
-    name: "Mini P.E.K.K.A"
-    aliases: ["mini pekka", "mini p.e.k.k.a"]
+    archetypes: [troop_ground]
+    name: Mini P.E.K.K.A
+    aliases: [mini pekka, mini p.e.k.k.a]
     elixir_cost: 6
-    card_type: "troop"
-    target_type: "ground"
-    can_hit_air: false
   - card_id: 10
-    name: "Minions"
-    aliases: ["minions"]
+    archetypes: [troop_any]
+    name: Minions
+    aliases: [minions]
     elixir_cost: 2
-    card_type: "troop"
-    target_type: "any"
-    can_hit_air: true
   - card_id: 11
-    name: "Valkyrie"
-    aliases: ["valkyrie", "valk"]
+    archetypes: [troop_ground]
+    name: Valkyrie
+    aliases: [valkyrie, valk]
     elixir_cost: 3
-    card_type: "troop"
-    target_type: "ground"
-    can_hit_air: false

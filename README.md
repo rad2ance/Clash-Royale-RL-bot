@@ -153,6 +153,7 @@ tests/unit/                      lightweight tests
 Card metadata registry:
 - `configs/cards_registry.yaml`
 - Used by simulator card semantics and intended as shared source for CV labels.
+- Supports archetype inheritance and per-card overrides for scaling to full roster metadata.
 
 ## Important notes
 
