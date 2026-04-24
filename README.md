@@ -173,6 +173,14 @@ $env:CR_API_TOKEN="YOUR_TOKEN"
 python scripts/sync_cards_from_api.py --apply
 ```
 
+Tip: if `--from-json` fails with file-not-found, fetch once and cache payload:
+
+```powershell
+$env:CR_API_TOKEN="YOUR_TOKEN"
+python scripts/sync_cards_from_api.py --save-json data/cards_api/cards.json
+python scripts/sync_cards_from_api.py --from-json data/cards_api/cards.json --apply
+```
+
 Review and bulk-fix pending stubs:
 
 ```powershell

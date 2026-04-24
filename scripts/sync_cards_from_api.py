@@ -31,6 +31,12 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Merge official Clash Royale card list into local cards registry.")
     parser.add_argument("--registry", type=str, default=str(default_registry_path()))
     parser.add_argument("--from-json", type=str, default="", help="Path to saved official /v1/cards JSON payload.")
+    parser.add_argument(
+        "--save-json",
+        type=str,
+        default="",
+        help="Optional path to save fetched/loaded payload for reuse.",
+    )
     parser.add_argument("--base-url", type=str, default="https://api.clashroyale.com")
     parser.add_argument(
         "--token-env",
@@ -46,8 +52,14 @@ def main() -> None:
         raise FileNotFoundError(registry_path)
 
     if args.from_json:
-        payload = json.loads(Path(args.from_json).read_text(encoding="utf-8"))
-        source = f"json:{Path(args.from_json).resolve()}"
+        json_path = Path(args.from_json)
+        if not json_path.exists():
+            raise RuntimeError(
+                f"--from-json file not found: {json_path}\n"
+                "Use a valid payload path, or fetch directly from API by setting CR_API_TOKEN and omitting --from-json."
+            )
+        payload = json.loads(json_path.read_text(encoding="utf-8"))
+        source = f"json:{json_path.resolve()}"
     else:
         token = os.getenv(args.token_env, "")
         if not token:
@@ -57,6 +69,12 @@ def main() -> None:
             )
         payload = _fetch_official_cards(token, base_url=args.base_url)
         source = f"api:{args.base_url.rstrip('/')}/v1/cards"
+
+    if args.save_json:
+        save_path = Path(args.save_json)
+        save_path.parent.mkdir(parents=True, exist_ok=True)
+        save_path.write_text(json.dumps(payload, indent=2, ensure_ascii=True) + "\n", encoding="utf-8")
+        print(f"[saved] payload -> {save_path.resolve()}")
 
     official_cards = parse_official_cards_payload(payload)
     registry_raw = yaml.safe_load(registry_path.read_text(encoding="utf-8"))
