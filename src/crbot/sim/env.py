@@ -2,11 +2,14 @@ from __future__ import annotations
 
 from collections import deque
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 import gymnasium as gym
 import numpy as np
 from gymnasium import spaces
+
+from crbot.cards import build_card_catalog_from_registry, default_registry_path
 
 
 @dataclass(frozen=True)
@@ -26,6 +29,7 @@ class SimConfig:
     unique_deck_cards: bool = True
     spell_card_count: int = 3
     building_card_count: int = 2
+    card_registry_path: str | None = None
     grid_w: int = 9
     grid_h: int = 15
     # Actions can only deploy on the player's side of the arena.
@@ -197,6 +201,30 @@ class CrLikeSimEnv(gym.Env):
         This keeps the simulator lightweight while ensuring card ids map to
         stable costs and semantics across resets and episodes.
         """
+        candidate_path: Path | None = Path(self.cfg.card_registry_path) if self.cfg.card_registry_path else None
+        if candidate_path is None:
+            default_path = default_registry_path()
+            if default_path.exists():
+                candidate_path = default_path
+        if candidate_path is not None:
+            registry = build_card_catalog_from_registry(path=candidate_path)
+            if len(registry) != int(self.cfg.n_cards):
+                raise ValueError(
+                    f"Card registry size ({len(registry)}) does not match SimConfig.n_cards ({self.cfg.n_cards})."
+                )
+            catalog = {
+                int(cid): CardMeta(
+                    card_id=int(entry.card_id),
+                    name=str(entry.name),
+                    elixir_cost=int(entry.elixir_cost),
+                    card_type=str(entry.card_type),
+                    target_type=str(entry.target_type),
+                    can_hit_air=bool(entry.can_hit_air),
+                )
+                for cid, entry in registry.items()
+            }
+            return catalog
+
         catalog: dict[int, CardMeta] = {}
         for cid in range(self.cfg.n_cards):
             if cid < self.cfg.spell_card_count:

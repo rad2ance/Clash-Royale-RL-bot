@@ -35,6 +35,9 @@ Helpful workflow:
 3. Build label queue/budget: `scripts/build_video_annotation_queue.py`
 4. Label top-priority frames/windows first.
 
+Use shared card classes from `configs/cards_registry.yaml` when defining
+label taxonomy so CV classes map cleanly to simulator card IDs.
+
 Output:
 - `data/il_video/*.npz`
 

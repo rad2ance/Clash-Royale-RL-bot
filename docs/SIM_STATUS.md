@@ -10,6 +10,7 @@
   - bridge-lane constraints for buildings
   - spells allowed across full arena
 - Deterministic card metadata registry (`card_id -> type/cost/targeting`).
+- Canonical card registry file at `configs/cards_registry.yaml` (sim-loaded).
 - Deck-cycle hand replacement (deck queue instead of fully random redraw each play).
 - Card-type-aware instant combat profile in `step()`.
 - Stateful active units:
