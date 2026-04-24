@@ -43,11 +43,17 @@ cards:
     name: Cannon
     aliases: [cannon]
     elixir_cost: 4
+    extra:
+      deploy_profile:
+        requires_bridge_lane_deploy: true
   - card_id: 4
     archetypes: [building_ground]
     name: Tesla
     aliases: [tesla]
     elixir_cost: 5
+    extra:
+      deploy_profile:
+        requires_bridge_lane_deploy: true
   - card_id: 5
     archetypes: [troop_ground]
     name: Knight

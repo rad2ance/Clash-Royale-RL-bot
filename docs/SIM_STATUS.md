@@ -14,6 +14,10 @@
 - Registry supports archetype inheritance (`archetypes` + per-card overrides) for future full-card expansion.
 - Registry supports optional per-card sim profile overrides via `extra.sim_profile`.
 - Per-card target preference overrides are supported (`closest` / `low_hp` / `high_hp`).
+- Per-card deploy/pathing overrides supported via registry:
+  - `deploy_profile.requires_bridge_lane_deploy`
+  - `deploy_profile.allow_enemy_side_deploy`
+  - `sim_profile.can_cross_river_without_bridge`
 - API-sync + review tooling:
   - `scripts/sync_cards_from_api.py`
   - `scripts/review_card_registry.py`

@@ -148,6 +148,59 @@ def test_building_cards_are_center_lane_constrained() -> None:
     assert env.is_action_legal(bridge_action) is True
 
 
+def test_troop_can_be_configured_to_require_bridge_lane_deploy() -> None:
+    env = CrLikeSimEnv()
+    env.reset(seed=0)
+    env.elixir = env.cfg.max_elixir
+    troop_id = env.cfg.spell_card_count + env.cfg.building_card_count + 1
+    base = env.get_card_meta(troop_id)
+    env.card_catalog[troop_id] = type(base)(
+        card_id=base.card_id,
+        name=base.name,
+        elixir_cost=base.elixir_cost,
+        card_type=base.card_type,
+        target_type=base.target_type,
+        can_hit_air=base.can_hit_air,
+        requires_bridge_lane_deploy=True,
+    )
+    env.hand_ids[:] = np.array([troop_id, troop_id, troop_id, troop_id], dtype=np.int32)
+    env._sync_hand_costs_from_ids()
+
+    slot = 0
+    y = min(env.cfg.grid_h - 1, env.deploy_min_y + 1)
+    edge_x = 0
+    bridge_x = env._nearest_bridge_x(env.cfg.grid_w // 2)
+    edge_action = 1 + slot * env.actions_per_card + y * env.cfg.grid_w + edge_x
+    bridge_action = 1 + slot * env.actions_per_card + y * env.cfg.grid_w + bridge_x
+    assert env.is_action_legal(edge_action) is False
+    assert env.is_action_legal(bridge_action) is True
+
+
+def test_troop_can_be_configured_for_enemy_side_deploy() -> None:
+    env = CrLikeSimEnv()
+    env.reset(seed=0)
+    env.elixir = env.cfg.max_elixir
+    troop_id = env.cfg.spell_card_count + env.cfg.building_card_count + 1
+    base = env.get_card_meta(troop_id)
+    env.card_catalog[troop_id] = type(base)(
+        card_id=base.card_id,
+        name=base.name,
+        elixir_cost=base.elixir_cost,
+        card_type=base.card_type,
+        target_type=base.target_type,
+        can_hit_air=base.can_hit_air,
+        allow_enemy_side_deploy=True,
+    )
+    env.hand_ids[:] = np.array([troop_id, troop_id, troop_id, troop_id], dtype=np.int32)
+    env._sync_hand_costs_from_ids()
+
+    slot = 0
+    top_y = max(0, min(env.deploy_min_y - 1, env.river_top_y - 1))
+    x = env.cfg.grid_w // 2
+    top_action = 1 + slot * env.actions_per_card + top_y * env.cfg.grid_w + x
+    assert env.is_action_legal(top_action) is True
+
+
 def test_river_rows_block_non_spell_placements() -> None:
     env = CrLikeSimEnv()
     env.reset(seed=0)
@@ -569,6 +622,33 @@ def test_friendly_troop_can_enter_river_on_bridge_lane() -> None:
     assert env.own_units
     unit = env.own_units[0]
     assert unit.y == env.river_bottom_y
+
+
+def test_friendly_ground_unit_override_can_cross_river_without_bridge() -> None:
+    env = CrLikeSimEnv(config=SimConfig(enemy_spawn_chance=0.0))
+    env.reset(seed=0)
+    start_y = env.river_bottom_y + 1
+    start_x = 0
+    env.own_units = [
+        ActiveUnit(
+            x=start_x,
+            y=start_y,
+            hp=40.0,
+            dps=8.0,
+            ttl=6,
+            card_type="troop",
+            target_type="ground",
+            can_hit_air=False,
+            is_air=False,
+            is_enemy=False,
+            move_interval_steps=1,
+            can_cross_river_without_bridge=True,
+        )
+    ]
+    env.step(env.noop_action)
+    unit = env.own_units[0]
+    assert unit.y == env.river_bottom_y
+    assert unit.x == start_x
 
 
 def test_friendly_air_unit_crosses_river_off_bridge_lane() -> None:

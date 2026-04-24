@@ -81,6 +81,9 @@ class CardMeta:
     move_interval_steps: int | None = None
     is_air: bool | None = None
     target_preference: str | None = None  # "closest" | "low_hp" | "high_hp"
+    requires_bridge_lane_deploy: bool | None = None
+    allow_enemy_side_deploy: bool | None = None
+    can_cross_river_without_bridge: bool | None = None
 
 
 @dataclass
@@ -105,6 +108,7 @@ class ActiveUnit:
     move_interval_steps: int = 1
     move_cooldown_remaining: int = 0
     target_preference: str = "low_hp"
+    can_cross_river_without_bridge: bool = False
 
 
 @dataclass(frozen=True)
@@ -262,6 +266,15 @@ class CrLikeSimEnv(gym.Env):
                     target_preference=None
                     if not isinstance((entry.extra or {}).get("sim_profile"), dict)
                     else ((entry.extra or {}).get("sim_profile") or {}).get("target_preference"),
+                    requires_bridge_lane_deploy=None
+                    if not isinstance((entry.extra or {}).get("deploy_profile"), dict)
+                    else ((entry.extra or {}).get("deploy_profile") or {}).get("requires_bridge_lane_deploy"),
+                    allow_enemy_side_deploy=None
+                    if not isinstance((entry.extra or {}).get("deploy_profile"), dict)
+                    else ((entry.extra or {}).get("deploy_profile") or {}).get("allow_enemy_side_deploy"),
+                    can_cross_river_without_bridge=None
+                    if not isinstance((entry.extra or {}).get("sim_profile"), dict)
+                    else ((entry.extra or {}).get("sim_profile") or {}).get("can_cross_river_without_bridge"),
                 )
                 for cid, entry in registry.items()
             }
@@ -567,6 +580,21 @@ class CrLikeSimEnv(gym.Env):
             return bool(card.card_type == "troop" and card.is_air)
         return card.card_type == "troop" and card.target_type == "any" and bool(card.can_hit_air)
 
+    def _card_requires_bridge_lane_deploy(self, card: CardMeta) -> bool:
+        if card.requires_bridge_lane_deploy is not None:
+            return bool(card.requires_bridge_lane_deploy)
+        return bool(card.card_type == "building")
+
+    def _card_allow_enemy_side_deploy(self, card: CardMeta) -> bool:
+        if card.allow_enemy_side_deploy is not None:
+            return bool(card.allow_enemy_side_deploy)
+        return False
+
+    def _card_can_cross_river_without_bridge(self, card: CardMeta, *, is_air: bool) -> bool:
+        if card.can_cross_river_without_bridge is not None:
+            return bool(card.can_cross_river_without_bridge)
+        return bool(is_air)
+
     def _spawn_friendly_unit(self, card: CardMeta, x: int, y: int, cost: float) -> None:
         if card.card_type == "spell":
             return
@@ -599,6 +627,7 @@ class CrLikeSimEnv(gym.Env):
                     if card.target_preference is not None
                     else "low_hp"
                 ),
+                can_cross_river_without_bridge=self._card_can_cross_river_without_bridge(card, is_air=bool(is_air)),
             )
         )
 
@@ -633,6 +662,7 @@ class CrLikeSimEnv(gym.Env):
                 move_interval_steps=move_interval,
                 move_cooldown_remaining=0,
                 target_preference="low_hp",
+                can_cross_river_without_bridge=bool(is_air),
             )
         )
 
@@ -937,7 +967,11 @@ class CrLikeSimEnv(gym.Env):
                     try_move(unit, unit.x, next_y)
             else:
                 in_approach = self._in_bridge_approach_band(y=unit.y, moving_to_enemy=True)
-                if (in_approach or self._is_river_row(next_y)) and not self._is_bridge_lane_x(unit.x):
+                if (
+                    (in_approach or self._is_river_row(next_y))
+                    and not bool(unit.can_cross_river_without_bridge)
+                    and not self._is_bridge_lane_x(unit.x)
+                ):
                     target_x = self._nearest_bridge_x(unit.x)
                     if unit.x < target_x:
                         try_move(unit, unit.x + 1, unit.y)
@@ -985,7 +1019,11 @@ class CrLikeSimEnv(gym.Env):
                     try_move(unit, unit.x, next_y)
             else:
                 in_approach = self._in_bridge_approach_band(y=unit.y, moving_to_enemy=False)
-                if (in_approach or self._is_river_row(next_y)) and not self._is_bridge_lane_x(unit.x):
+                if (
+                    (in_approach or self._is_river_row(next_y))
+                    and not bool(unit.can_cross_river_without_bridge)
+                    and not self._is_bridge_lane_x(unit.x)
+                ):
                     target_x = self._nearest_bridge_x(unit.x)
                     if unit.x < target_x:
                         try_move(unit, unit.x + 1, unit.y)
@@ -1021,19 +1059,20 @@ class CrLikeSimEnv(gym.Env):
         mask = np.zeros(self.n_actions, dtype=bool)
         mask[self.noop_action] = True
         affordable_slots = self.hand_costs <= (self.elixir + 1e-6)
+        non_river_mask = np.zeros(self.actions_per_card, dtype=bool)
         own_side_mask = np.zeros(self.actions_per_card, dtype=bool)
-        building_mask = np.zeros(self.actions_per_card, dtype=bool)
+        bridge_non_river_mask = np.zeros(self.actions_per_card, dtype=bool)
         for y in range(self.cfg.grid_h):
-            if y < self.deploy_min_y:
-                continue
             if self._is_river_row(y):
                 continue
             row_start = y * self.cfg.grid_w
             row_end = row_start + self.cfg.grid_w
-            own_side_mask[row_start:row_end] = True
+            non_river_mask[row_start:row_end] = True
+            if y >= self.deploy_min_y:
+                own_side_mask[row_start:row_end] = True
             for x in range(self.cfg.grid_w):
                 if self._is_bridge_lane_x(x):
-                    building_mask[row_start + x] = True
+                    bridge_non_river_mask[row_start + x] = True
         all_arena_mask = np.ones(self.actions_per_card, dtype=bool)
 
         for slot in range(self.cfg.hand_size):
@@ -1042,12 +1081,13 @@ class CrLikeSimEnv(gym.Env):
             start = 1 + slot * self.actions_per_card
             stop = start + self.actions_per_card
             card_id = int(self.hand_ids[slot])
+            card = self.get_card_meta(card_id)
             if self._is_spell_card(card_id):
                 slot_mask = all_arena_mask
-            elif self._is_building_card(card_id):
-                slot_mask = building_mask
             else:
-                slot_mask = own_side_mask
+                slot_mask = non_river_mask if self._card_allow_enemy_side_deploy(card) else own_side_mask
+                if self._card_requires_bridge_lane_deploy(card):
+                    slot_mask = np.logical_and(slot_mask, bridge_non_river_mask)
             mask[start:stop] = slot_mask
         return mask
 
