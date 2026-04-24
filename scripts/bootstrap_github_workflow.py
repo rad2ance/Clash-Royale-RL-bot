@@ -151,15 +151,14 @@ def create_issue(repo: str, token: str, title: str, body: str, labels: list[str]
 
 
 def resolve_project_owner(owner_login: str | None, token: str) -> tuple[str, str]:
-    query = """
-    query($login: String) {
-      viewer { login id }
-      user(login: $login) { id login }
-      organization(login: $login) { id login }
-    }
-    """
-    data = github_graphql_request(token, query, {"login": owner_login})
     if owner_login:
+        query = """
+        query($login: String!) {
+          user(login: $login) { id login }
+          organization(login: $login) { id login }
+        }
+        """
+        data = github_graphql_request(token, query, {"login": owner_login})
         user = data.get("user")
         if isinstance(user, dict) and user.get("id"):
             return str(user["id"]), str(user.get("login", owner_login))
@@ -168,6 +167,12 @@ def resolve_project_owner(owner_login: str | None, token: str) -> tuple[str, str
             return str(org["id"]), str(org.get("login", owner_login))
         raise RuntimeError(f"Could not resolve GitHub owner '{owner_login}'")
 
+    query = """
+    query {
+      viewer { login id }
+    }
+    """
+    data = github_graphql_request(token, query)
     viewer = data.get("viewer")
     if not isinstance(viewer, dict) or not viewer.get("id") or not viewer.get("login"):
         raise RuntimeError("Could not resolve GraphQL viewer for default project owner")
