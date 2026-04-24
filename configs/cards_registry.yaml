@@ -77,6 +77,9 @@ cards:
     name: Mini P.E.K.K.A
     aliases: [mini pekka, mini p.e.k.k.a]
     elixir_cost: 6
+    extra:
+      sim_profile:
+        target_preference: high_hp
   - card_id: 10
     archetypes: [troop_any]
     name: Minions

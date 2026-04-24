@@ -470,6 +470,55 @@ def test_target_priority_hits_closest_enemy_in_range() -> None:
     assert close_loss > far_loss
 
 
+def test_target_preference_high_hp_selects_tankier_enemy_at_same_distance() -> None:
+    env = CrLikeSimEnv(config=SimConfig(enemy_spawn_chance=0.0))
+    env.reset(seed=0)
+    attacker = ActiveUnit(
+        x=4,
+        y=8,
+        hp=60.0,
+        dps=20.0,
+        ttl=5,
+        card_type="troop",
+        target_type="any",
+        can_hit_air=True,
+        is_air=False,
+        is_enemy=False,
+        target_preference="high_hp",
+    )
+    low_hp = ActiveUnit(
+        x=3,
+        y=8,
+        hp=30.0,
+        dps=5.0,
+        ttl=5,
+        card_type="troop",
+        target_type="ground",
+        can_hit_air=False,
+        is_air=False,
+        is_enemy=True,
+    )
+    high_hp = ActiveUnit(
+        x=5,
+        y=8,
+        hp=120.0,
+        dps=5.0,
+        ttl=5,
+        card_type="troop",
+        target_type="ground",
+        can_hit_air=False,
+        is_air=False,
+        is_enemy=True,
+    )
+    env.own_units = [attacker]
+    env.enemy_units = [low_hp, high_hp]
+    low_before = low_hp.hp
+    high_before = high_hp.hp
+    env.step(env.noop_action)
+    # High HP target should take a larger loss than the non-targeted unit.
+    assert (high_before - high_hp.hp) > (low_before - low_hp.hp)
+
+
 def test_friendly_troop_moves_toward_bridge_before_river_crossing() -> None:
     env = CrLikeSimEnv(config=SimConfig(enemy_spawn_chance=0.0))
     env.reset(seed=0)

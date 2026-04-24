@@ -13,6 +13,7 @@
 - Canonical card registry file at `configs/cards_registry.yaml` (sim-loaded).
 - Registry supports archetype inheritance (`archetypes` + per-card overrides) for future full-card expansion.
 - Registry supports optional per-card sim profile overrides via `extra.sim_profile`.
+- Per-card target preference overrides are supported (`closest` / `low_hp` / `high_hp`).
 - API-sync + review tooling:
   - `scripts/sync_cards_from_api.py`
   - `scripts/review_card_registry.py`

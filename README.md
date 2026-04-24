@@ -155,6 +155,7 @@ Card metadata registry:
 - Used by simulator card semantics and intended as shared source for CV labels.
 - Supports archetype inheritance and per-card overrides for scaling to full roster metadata.
 - Optional `extra.sim_profile` supports per-card simulator tuning (range, cooldown, splash, projectile speed, move interval, air override).
+- Optional `extra.sim_profile` also supports targeting behavior overrides (e.g. `target_preference: high_hp`).
 
 Sync official card list into registry stubs (dry-run by default):
 

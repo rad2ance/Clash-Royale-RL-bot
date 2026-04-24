@@ -80,6 +80,7 @@ class CardMeta:
     projectile_speed_cells_per_step: float | None = None
     move_interval_steps: int | None = None
     is_air: bool | None = None
+    target_preference: str | None = None  # "closest" | "low_hp" | "high_hp"
 
 
 @dataclass
@@ -103,6 +104,7 @@ class ActiveUnit:
     objective_lane: int | None = None  # 0=left, 1=right; lock until invalid
     move_interval_steps: int = 1
     move_cooldown_remaining: int = 0
+    target_preference: str = "low_hp"
 
 
 @dataclass(frozen=True)
@@ -257,6 +259,9 @@ class CrLikeSimEnv(gym.Env):
                     is_air=None
                     if not isinstance((entry.extra or {}).get("sim_profile"), dict)
                     else ((entry.extra or {}).get("sim_profile") or {}).get("is_air"),
+                    target_preference=None
+                    if not isinstance((entry.extra or {}).get("sim_profile"), dict)
+                    else ((entry.extra or {}).get("sim_profile") or {}).get("target_preference"),
                 )
                 for cid, entry in registry.items()
             }
@@ -589,6 +594,11 @@ class CrLikeSimEnv(gym.Env):
                 projectile_speed_cells_per_step=float(projectile_speed),
                 move_interval_steps=max(1, int(move_interval)),
                 move_cooldown_remaining=0,
+                target_preference=(
+                    str(card.target_preference).strip().lower()
+                    if card.target_preference is not None
+                    else "low_hp"
+                ),
             )
         )
 
@@ -622,6 +632,7 @@ class CrLikeSimEnv(gym.Env):
                 projectile_speed_cells_per_step=float(self.cfg.projectile_speed_cells_per_step),
                 move_interval_steps=move_interval,
                 move_cooldown_remaining=0,
+                target_preference="low_hp",
             )
         )
 
@@ -641,6 +652,12 @@ class CrLikeSimEnv(gym.Env):
                 in_range.append(target)
         if not in_range:
             return None
+        pref = str(attacker.target_preference).strip().lower()
+        if pref == "closest":
+            return min(in_range, key=lambda u: (abs(attacker.x - u.x) + abs(attacker.y - u.y), u.hp))
+        if pref == "high_hp":
+            return min(in_range, key=lambda u: (abs(attacker.x - u.x) + abs(attacker.y - u.y), -u.hp))
+        # default "low_hp" behavior
         return min(in_range, key=lambda u: (abs(attacker.x - u.x) + abs(attacker.y - u.y), u.hp))
 
     def _distance_cells(self, x0: int, y0: int, x1: int, y1: int) -> float:
