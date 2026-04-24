@@ -859,3 +859,43 @@ def test_king_destruction_counts_as_three_crowns() -> None:
     env = CrLikeSimEnv(config=SimConfig(enemy_spawn_chance=0.0))
     assert env._crowns_taken_against(np.array([0.0, 0.0], dtype=np.float32), king_hp=0.0) == 3
     assert env._crowns_taken_against(np.array([0.0, 100.0], dtype=np.float32), king_hp=100.0) == 1
+
+
+def test_terminal_outcome_prefers_crown_count_over_hp() -> None:
+    env = CrLikeSimEnv(config=SimConfig(enemy_spawn_chance=0.0, enable_overtime=False))
+    env.reset(seed=0)
+    env.enemy_princess_hps[:] = np.array([0.0, env.cfg.princess_hp], dtype=np.float32)  # player +1 crown
+    env.own_princess_hps[:] = np.array([env.cfg.princess_hp, env.cfg.princess_hp], dtype=np.float32)
+    env.time_left = env.cfg.step_seconds
+    _, _, terminated, _, info = env.step(env.noop_action)
+    assert terminated is True
+    assert info["winner"] == "player"
+    assert info["outcome_reason"] == "crowns"
+
+
+def test_terminal_outcome_uses_hp_tiebreak_when_crowns_equal() -> None:
+    env = CrLikeSimEnv(config=SimConfig(enemy_spawn_chance=0.0, enable_overtime=False))
+    env.reset(seed=0)
+    env.enemy_princess_hps[:] = np.array([env.cfg.princess_hp, env.cfg.princess_hp], dtype=np.float32)
+    env.own_princess_hps[:] = np.array([env.cfg.princess_hp, env.cfg.princess_hp], dtype=np.float32)
+    env.enemy_king_hp = env.cfg.king_hp - 300.0
+    env.own_king_hp = env.cfg.king_hp
+    env.time_left = env.cfg.step_seconds
+    _, _, terminated, _, info = env.step(env.noop_action)
+    assert terminated is True
+    assert info["winner"] == "player"
+    assert info["outcome_reason"] == "hp_tiebreak"
+
+
+def test_terminal_outcome_true_draw_when_crowns_and_hp_equal() -> None:
+    env = CrLikeSimEnv(config=SimConfig(enemy_spawn_chance=0.0, enable_overtime=False))
+    env.reset(seed=0)
+    env.enemy_princess_hps[:] = np.array([env.cfg.princess_hp, env.cfg.princess_hp], dtype=np.float32)
+    env.own_princess_hps[:] = np.array([env.cfg.princess_hp, env.cfg.princess_hp], dtype=np.float32)
+    env.enemy_king_hp = env.cfg.king_hp
+    env.own_king_hp = env.cfg.king_hp
+    env.time_left = env.cfg.step_seconds
+    _, _, terminated, _, info = env.step(env.noop_action)
+    assert terminated is True
+    assert info["winner"] == "draw"
+    assert info["outcome_reason"] == "true_draw"

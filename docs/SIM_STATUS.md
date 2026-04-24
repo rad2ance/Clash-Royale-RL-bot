@@ -33,6 +33,7 @@
   - configurable regulation time
   - optional one-shot overtime extension when regulation ends with both kings alive
   - crown-score bookkeeping (princess/king objective tracking)
+  - terminal winner resolution (`king_down` -> `crowns` -> HP tiebreak -> draw)
 
 ## Remaining High-Value Gaps
 - True card mechanics:
@@ -47,7 +48,7 @@
   - more realistic movement speeds and stopping logic
 - Match rules:
   - basic single-phase overtime extension (simplified sudden-death proxy)
-  - overtime/sudden death tie-break details
+  - overtime/sudden death exact tie-break details
   - exact crown tie-break semantics and priority details
 - Observation realism:
   - richer state channels (unit maps, explicit card cycle exposure, opponent hidden info model)

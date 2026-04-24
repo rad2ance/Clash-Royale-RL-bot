@@ -875,6 +875,36 @@ class CrLikeSimEnv(gym.Env):
         enemy_crowns = self._crowns_taken_against(self.own_princess_hps, self.own_king_hp)
         return int(player_crowns), int(enemy_crowns)
 
+    def _total_objective_hp(self) -> tuple[float, float]:
+        player_total = float(self.own_king_hp + float(np.sum(self.own_princess_hps)))
+        enemy_total = float(self.enemy_king_hp + float(np.sum(self.enemy_princess_hps)))
+        return player_total, enemy_total
+
+    def _resolve_match_outcome(self) -> tuple[str, str]:
+        """
+        Resolve terminal outcome as (winner, reason).
+
+        winner in {"player", "enemy", "draw"}
+        reason in {"king_down", "crowns", "hp_tiebreak", "true_draw"}
+        """
+        if self.enemy_king_hp <= 0.0 and self.own_king_hp > 0.0:
+            return "player", "king_down"
+        if self.own_king_hp <= 0.0 and self.enemy_king_hp > 0.0:
+            return "enemy", "king_down"
+
+        player_crowns, enemy_crowns = self._crown_score()
+        if player_crowns > enemy_crowns:
+            return "player", "crowns"
+        if enemy_crowns > player_crowns:
+            return "enemy", "crowns"
+
+        player_total, enemy_total = self._total_objective_hp()
+        if enemy_total < player_total:
+            return "player", "hp_tiebreak"
+        if player_total < enemy_total:
+            return "enemy", "hp_tiebreak"
+        return "draw", "true_draw"
+
     def reset(self, *, seed: int | None = None, options: dict[str, Any] | None = None):
         if seed is not None:
             self.rng = np.random.default_rng(seed)
@@ -961,12 +991,15 @@ class CrLikeSimEnv(gym.Env):
         if not legal_action:
             reward -= 0.05
 
+        winner = "ongoing"
+        outcome_reason = "none"
         terminated = not self._alive()
         truncated = False
         if terminated:
-            if self.enemy_king_hp <= 0.0 and self.own_king_hp > 0.0:
+            winner, outcome_reason = self._resolve_match_outcome()
+            if winner == "player" and outcome_reason == "king_down":
                 reward += 2.0
-            elif self.own_king_hp <= 0.0 and self.enemy_king_hp > 0.0:
+            elif winner == "enemy" and outcome_reason == "king_down":
                 reward -= 2.0
             else:
                 hp_delta = (self.enemy_king_hp + self.enemy_princess_hps.sum()) - (
@@ -996,6 +1029,8 @@ class CrLikeSimEnv(gym.Env):
             "overtime_started": bool(overtime_started),
             "player_crowns": int(player_crowns),
             "enemy_crowns": int(enemy_crowns),
+            "winner": winner,
+            "outcome_reason": outcome_reason,
         }
         return self._get_obs(), float(reward), terminated, truncated, info
 
