@@ -76,6 +76,12 @@ Assign stable track IDs across frames:
 python scripts/track_video_states.py --in data/video_states/match1_states.jsonl --out data/video_states/match1_tracks.jsonl
 ```
 
+Build prioritized manual-label queue + budget summary:
+
+```powershell
+python scripts/build_video_annotation_queue.py --states data/video_states/match1_tracks.jsonl --out-queue data/video_states/match1_annotation_queue.jsonl --out-summary data/video_states/match1_annotation_summary.json --top-k 300
+```
+
 Build BC dataset from labeled video sessions:
 
 ```powershell

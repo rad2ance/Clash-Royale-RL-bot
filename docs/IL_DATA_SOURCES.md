@@ -29,6 +29,12 @@ Important:
 - Clash Royale TV videos do **not** include input logs, so you need a label
   source (manual annotation or CV model) to produce `actions.jsonl`.
 
+Helpful workflow:
+1. Extract states: `scripts/extract_video_states.py`
+2. Track entities: `scripts/track_video_states.py`
+3. Build label queue/budget: `scripts/build_video_annotation_queue.py`
+4. Label top-priority frames/windows first.
+
 Output:
 - `data/il_video/*.npz`
 
