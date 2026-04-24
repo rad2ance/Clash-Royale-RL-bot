@@ -37,6 +37,9 @@ class SimConfig:
     troop_attack_range_cells: int = 2
     building_attack_range_cells: int = 4
     attack_cooldown_steps: int = 3
+    projectile_travel_enabled: bool = False
+    projectile_speed_cells_per_step: float = 2.5
+    area_splash_radius_cells: float = 1.0
     # Observation builder controls (policy-facing representation).
     observe_unit_density: bool = False
     obs_grid_w: int = 4
@@ -69,6 +72,7 @@ class ActiveUnit:
     attack_cooldown_steps: int = 3
     cooldown_remaining: int = 0
     hit_damage: float = 1.0
+    splash_radius: float = 0.0
 
 
 @dataclass(frozen=True)
@@ -84,6 +88,18 @@ class SimStateSnapshot:
     hand_costs: np.ndarray
     own_units: tuple[ActiveUnit, ...]
     enemy_units: tuple[ActiveUnit, ...]
+
+
+@dataclass
+class PendingProjectile:
+    is_enemy_source: bool
+    target_x: int
+    target_y: int
+    damage: float
+    splash_radius: float
+    can_hit_air: bool
+    ttl_steps: int
+    target_towers: bool
 
 
 class CrLikeSimEnv(gym.Env):
@@ -148,6 +164,7 @@ class CrLikeSimEnv(gym.Env):
         self.hand_costs = np.zeros(self.cfg.hand_size, dtype=np.float32)
         self.own_units: list[ActiveUnit] = []
         self.enemy_units: list[ActiveUnit] = []
+        self.pending_projectiles: list[PendingProjectile] = []
         self._last_decoded_action: tuple[int, int, int] | None = None
         self._draw_initial_hand()
 
@@ -328,8 +345,9 @@ class CrLikeSimEnv(gym.Env):
 
         return offense_mult, self_damage_mult, king_share
 
-    def _unit_profile(self, card: CardMeta, cost: float) -> tuple[float, float, int, int, int, float]:
+    def _unit_profile(self, card: CardMeta, cost: float) -> tuple[float, float, int, int, int, float, float]:
         cooldown = max(1, int(self.cfg.attack_cooldown_steps))
+        splash = 0.0
         if card.card_type == "building":
             dps = 3.2 * cost
             hp = 32.0 * cost
@@ -344,13 +362,15 @@ class CrLikeSimEnv(gym.Env):
             dps *= 1.08
         if card.target_type == "ground":
             hp *= 1.12
+        if card.target_type == "area":
+            splash = float(self.cfg.area_splash_radius_cells)
         hit_damage = dps * self.cfg.step_seconds * float(cooldown)
-        return dps, hp, ttl, int(attack_range), cooldown, float(hit_damage)
+        return dps, hp, ttl, int(attack_range), cooldown, float(hit_damage), splash
 
     def _spawn_friendly_unit(self, card: CardMeta, x: int, y: int, cost: float) -> None:
         if card.card_type == "spell":
             return
-        dps, hp, ttl, attack_range, cooldown, hit_damage = self._unit_profile(card, cost)
+        dps, hp, ttl, attack_range, cooldown, hit_damage, splash = self._unit_profile(card, cost)
         self.own_units.append(
             ActiveUnit(
                 x=int(np.clip(x, 0, self.cfg.grid_w - 1)),
@@ -367,6 +387,7 @@ class CrLikeSimEnv(gym.Env):
                 attack_cooldown_steps=cooldown,
                 cooldown_remaining=0,
                 hit_damage=hit_damage,
+                splash_radius=float(splash),
             )
         )
 
@@ -392,6 +413,7 @@ class CrLikeSimEnv(gym.Env):
                 attack_cooldown_steps=max(1, int(self.cfg.attack_cooldown_steps)),
                 cooldown_remaining=0,
                 hit_damage=float(3.8 * cost * self.cfg.step_seconds * max(1, int(self.cfg.attack_cooldown_steps))),
+                splash_radius=0.0,
             )
         )
 
@@ -413,6 +435,81 @@ class CrLikeSimEnv(gym.Env):
             return None
         return min(in_range, key=lambda u: (abs(attacker.x - u.x) + abs(attacker.y - u.y), u.hp))
 
+    def _distance_cells(self, x0: int, y0: int, x1: int, y1: int) -> float:
+        return float(abs(int(x0) - int(x1)) + abs(int(y0) - int(y1)))
+
+    def _enqueue_projectile(
+        self,
+        *,
+        attacker: ActiveUnit,
+        target_x: int,
+        target_y: int,
+        target_towers: bool,
+    ) -> None:
+        dist = self._distance_cells(attacker.x, attacker.y, target_x, target_y)
+        speed = max(1e-6, float(self.cfg.projectile_speed_cells_per_step))
+        ttl = max(1, int(np.ceil(dist / speed)))
+        self.pending_projectiles.append(
+            PendingProjectile(
+                is_enemy_source=bool(attacker.is_enemy),
+                target_x=int(target_x),
+                target_y=int(target_y),
+                damage=float(attacker.hit_damage),
+                splash_radius=float(attacker.splash_radius),
+                can_hit_air=bool(attacker.can_hit_air),
+                ttl_steps=ttl,
+                target_towers=bool(target_towers),
+            )
+        )
+
+    def _apply_unit_splash(
+        self,
+        *,
+        proj: PendingProjectile,
+        targets: list[ActiveUnit],
+    ) -> bool:
+        hit_any = False
+        radius = max(0.0, float(proj.splash_radius))
+        for t in targets:
+            if t.is_air and not proj.can_hit_air:
+                continue
+            d = self._distance_cells(proj.target_x, proj.target_y, t.x, t.y)
+            if d <= max(0.0, radius):
+                t.hp -= proj.damage
+                hit_any = True
+        return hit_any
+
+    def _advance_projectiles(self) -> tuple[float, float]:
+        dmg_enemy = 0.0
+        dmg_self = 0.0
+        if not self.pending_projectiles:
+            return dmg_enemy, dmg_self
+
+        next_queue: list[PendingProjectile] = []
+        for p in self.pending_projectiles:
+            p.ttl_steps -= 1
+            if p.ttl_steps > 0:
+                next_queue.append(p)
+                continue
+
+            if p.is_enemy_source:
+                unit_hit = self._apply_unit_splash(proj=p, targets=self.own_units)
+                if p.target_towers or not unit_hit:
+                    dmg_self += p.damage
+                    self.own_king_hp = max(0.0, self.own_king_hp - 0.55 * p.damage)
+                    self.own_princess_hps -= 0.45 * p.damage
+            else:
+                unit_hit = self._apply_unit_splash(proj=p, targets=self.enemy_units)
+                if p.target_towers or not unit_hit:
+                    dmg_enemy += p.damage
+                    self.enemy_king_hp = max(0.0, self.enemy_king_hp - 0.55 * p.damage)
+                    self.enemy_princess_hps -= 0.45 * p.damage
+
+        self.pending_projectiles = next_queue
+        self.enemy_princess_hps = np.clip(self.enemy_princess_hps, 0.0, self.cfg.princess_hp)
+        self.own_princess_hps = np.clip(self.own_princess_hps, 0.0, self.cfg.princess_hp)
+        return float(dmg_enemy), float(dmg_self)
+
     def _process_unit_duels(self) -> tuple[set[int], set[int]]:
         attacked_own: set[int] = set()
         attacked_enemy: set[int] = set()
@@ -423,7 +520,10 @@ class CrLikeSimEnv(gym.Env):
                 continue
             target = self._closest_target(own, self.enemy_units)
             if target is not None:
-                target.hp -= own.hit_damage
+                if self.cfg.projectile_travel_enabled and own.attack_range > 1:
+                    self._enqueue_projectile(attacker=own, target_x=target.x, target_y=target.y, target_towers=False)
+                else:
+                    target.hp -= own.hit_damage
                 own.cooldown_remaining = own.attack_cooldown_steps
                 attacked_own.add(id(own))
         for enemy in self.enemy_units:
@@ -431,7 +531,10 @@ class CrLikeSimEnv(gym.Env):
                 continue
             target = self._closest_target(enemy, self.own_units)
             if target is not None:
-                target.hp -= enemy.hit_damage
+                if self.cfg.projectile_travel_enabled and enemy.attack_range > 1:
+                    self._enqueue_projectile(attacker=enemy, target_x=target.x, target_y=target.y, target_towers=False)
+                else:
+                    target.hp -= enemy.hit_damage
                 enemy.cooldown_remaining = enemy.attack_cooldown_steps
                 attacked_enemy.add(id(enemy))
         return attacked_own, attacked_enemy
@@ -451,21 +554,35 @@ class CrLikeSimEnv(gym.Env):
         for unit in self.own_units:
             if id(unit) in attacked_own or unit.cooldown_remaining > 0 or not self._in_enemy_tower_zone(unit):
                 continue
-            pressure = unit.hit_damage
-            if unit.card_type == "building":
-                pressure *= 0.75
-            damage_to_enemy += pressure
-            self.enemy_king_hp = max(0.0, self.enemy_king_hp - own_king_share * pressure)
-            self.enemy_princess_hps -= (1.0 - own_king_share) * pressure
+            pressure = unit.hit_damage * (0.75 if unit.card_type == "building" else 1.0)
+            if self.cfg.projectile_travel_enabled and unit.attack_range > 1:
+                self._enqueue_projectile(
+                    attacker=unit,
+                    target_x=self.cfg.grid_w // 2,
+                    target_y=0,
+                    target_towers=True,
+                )
+            else:
+                damage_to_enemy += pressure
+                self.enemy_king_hp = max(0.0, self.enemy_king_hp - own_king_share * pressure)
+                self.enemy_princess_hps -= (1.0 - own_king_share) * pressure
             unit.cooldown_remaining = unit.attack_cooldown_steps
 
         for unit in self.enemy_units:
             if id(unit) in attacked_enemy or unit.cooldown_remaining > 0 or not self._in_own_tower_zone(unit):
                 continue
             pressure = unit.hit_damage
-            damage_to_self += pressure
-            self.own_king_hp = max(0.0, self.own_king_hp - enemy_king_share * pressure)
-            self.own_princess_hps -= (1.0 - enemy_king_share) * pressure
+            if self.cfg.projectile_travel_enabled and unit.attack_range > 1:
+                self._enqueue_projectile(
+                    attacker=unit,
+                    target_x=self.cfg.grid_w // 2,
+                    target_y=self.cfg.grid_h - 1,
+                    target_towers=True,
+                )
+            else:
+                damage_to_self += pressure
+                self.own_king_hp = max(0.0, self.own_king_hp - enemy_king_share * pressure)
+                self.own_princess_hps -= (1.0 - enemy_king_share) * pressure
             unit.cooldown_remaining = unit.attack_cooldown_steps
 
         self.enemy_princess_hps = np.clip(self.enemy_princess_hps, 0.0, self.cfg.princess_hp)
@@ -481,6 +598,9 @@ class CrLikeSimEnv(gym.Env):
 
         attacked_own, attacked_enemy = self._process_unit_duels()
         dmg_enemy, dmg_self = self._process_tower_attacks(attacked_own, attacked_enemy)
+        proj_enemy, proj_self = self._advance_projectiles()
+        dmg_enemy += proj_enemy
+        dmg_self += proj_self
 
         for unit in self.own_units:
             unit.ttl -= 1
@@ -592,6 +712,7 @@ class CrLikeSimEnv(gym.Env):
         self._draw_initial_hand()
         self.own_units = []
         self.enemy_units = []
+        self.pending_projectiles = []
         self._last_decoded_action = None
         return self._get_obs(), {"legal_action_mask": self.get_legal_action_mask()}
 
@@ -676,6 +797,7 @@ class CrLikeSimEnv(gym.Env):
             "ongoing_damage_to_self": ongoing_self,
             "own_active_units": len(self.own_units),
             "enemy_active_units": len(self.enemy_units),
+            "pending_projectiles": len(self.pending_projectiles),
         }
         return self._get_obs(), float(reward), terminated, truncated, info
 

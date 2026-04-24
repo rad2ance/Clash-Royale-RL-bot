@@ -27,6 +27,7 @@ def test_env_reset_and_step_shapes() -> None:
     assert "ongoing_damage_to_self" in step_info
     assert "own_active_units" in step_info
     assert "enemy_active_units" in step_info
+    assert "pending_projectiles" in step_info
     assert "legal_action_mask" in step_info
     assert step_info["legal_action_mask"].shape == (env.n_actions,)
 
@@ -329,6 +330,50 @@ def test_tower_attacks_respect_cooldown_steps() -> None:
     hp2 = float(env.enemy_king_hp)
     assert hp1 < hp0
     assert hp2 == hp1
+
+
+def test_projectile_mode_delays_ranged_tower_damage() -> None:
+    env = CrLikeSimEnv(
+        config=SimConfig(
+            enemy_spawn_chance=0.0,
+            projectile_travel_enabled=True,
+            projectile_speed_cells_per_step=1.0,
+            attack_cooldown_steps=2,
+        )
+    )
+    env.reset(seed=0)
+    env.own_units = [
+        ActiveUnit(
+            x=env.cfg.grid_w // 2,
+            y=env.river_top_y,
+            hp=40.0,
+            dps=10.0,
+            ttl=8,
+            card_type="building",
+            target_type="ground",
+            can_hit_air=False,
+            is_air=False,
+            is_enemy=False,
+            attack_range=4,
+            attack_cooldown_steps=2,
+            cooldown_remaining=0,
+            hit_damage=20.0,
+            splash_radius=0.0,
+        )
+    ]
+    hp0 = float(env.enemy_king_hp)
+    _, _, _, _, info1 = env.step(env.noop_action)
+    hp1 = float(env.enemy_king_hp)
+    # First step should queue projectile but not impact yet.
+    assert int(info1["pending_projectiles"]) >= 1
+    assert hp1 == hp0
+    hp_after = hp1
+    for _ in range(10):
+        env.step(env.noop_action)
+        hp_after = float(env.enemy_king_hp)
+        if hp_after < hp1:
+            break
+    assert hp_after < hp1
 
 
 def test_friendly_troop_advances_toward_enemy_side() -> None:

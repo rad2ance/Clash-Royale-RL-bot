@@ -24,6 +24,9 @@ sim:
   troop_attack_range_cells: 2
   building_attack_range_cells: 4
   attack_cooldown_steps: 3
+  projectile_travel_enabled: false
+  projectile_speed_cells_per_step: 2.5
+  area_splash_radius_cells: 1.0
   observe_unit_density: false
   obs_grid_w: 4
   obs_grid_h: 7

@@ -15,6 +15,7 @@
   - troop/building spawns
   - TTL and HP decay
   - attack range + cooldown-based unit/tower attacks
+  - optional projectile-travel mode with delayed impacts and splash radius
   - closest-target duel logic
   - bridge-aware river crossing pathing
 - Visual debugging:
@@ -30,7 +31,7 @@
   - spell-specific areas/effects and timing windows
 - Board simulation fidelity:
   - unit collision and occupancy rules
-  - projectile travel and splash geometry
+  - richer projectile/splash geometry and card-specific projectiles
   - exact tower targeting/retarget behavior
 - Pathing fidelity:
   - lane/path graph around bridges and towers
