@@ -18,6 +18,7 @@
   - optional projectile-travel mode with delayed impacts and splash radius
   - closest-target duel logic
   - bridge-aware river crossing pathing
+  - per-cell occupancy cap to prevent unrealistic unit stacking
 - Visual debugging:
   - `env.render()` RGB frames
   - GIF + CSV export via `scripts/visualize_sim_episode.py`
@@ -30,7 +31,7 @@
   - per-card stats/abilities beyond coarse archetype templates
   - spell-specific areas/effects and timing windows
 - Board simulation fidelity:
-  - unit collision and occupancy rules
+  - richer collision/avoidance beyond simple occupancy cap
   - richer projectile/splash geometry and card-specific projectiles
   - exact tower targeting/retarget behavior
 - Pathing fidelity:

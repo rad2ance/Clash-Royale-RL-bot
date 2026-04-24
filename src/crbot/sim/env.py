@@ -40,6 +40,9 @@ class SimConfig:
     projectile_travel_enabled: bool = False
     projectile_speed_cells_per_step: float = 2.5
     area_splash_radius_cells: float = 1.0
+    # Simple collision/occupancy guardrail:
+    # units from either side cannot stack beyond this per-cell count.
+    max_units_per_cell: int = 1
     # Observation builder controls (policy-facing representation).
     observe_unit_density: bool = False
     obs_grid_w: int = 4
@@ -602,32 +605,57 @@ class CrLikeSimEnv(gym.Env):
         dmg_enemy += proj_enemy
         dmg_self += proj_self
 
-        for unit in self.own_units:
+        occupied_counts: dict[tuple[int, int], int] = {}
+        for u in self.own_units + self.enemy_units:
+            key = (int(u.x), int(u.y))
+            occupied_counts[key] = occupied_counts.get(key, 0) + 1
+
+        max_per_cell = max(1, int(self.cfg.max_units_per_cell))
+
+        def try_move(unit: ActiveUnit, new_x: int, new_y: int) -> bool:
+            nx = int(np.clip(new_x, 0, self.cfg.grid_w - 1))
+            ny = int(np.clip(new_y, 0, self.cfg.grid_h - 1))
+            cur = (int(unit.x), int(unit.y))
+            nxt = (nx, ny)
+            if nxt == cur:
+                return False
+            if occupied_counts.get(nxt, 0) >= max_per_cell:
+                return False
+            occupied_counts[cur] = max(0, occupied_counts.get(cur, 1) - 1)
+            occupied_counts[nxt] = occupied_counts.get(nxt, 0) + 1
+            unit.x = nx
+            unit.y = ny
+            return True
+
+        for unit in sorted(self.own_units, key=lambda u: (u.y, u.x)):
             unit.ttl -= 1
             unit.hp -= 0.2
-            if unit.card_type != "building":
-                next_y = max(0, unit.y - 1)
-                if self._is_river_row(next_y) and not self._is_bridge_lane_x(unit.x):
-                    target_x = self._nearest_bridge_x(unit.x)
-                    if unit.x < target_x:
-                        unit.x += 1
-                    elif unit.x > target_x:
-                        unit.x -= 1
-                else:
-                    unit.y = next_y
-        for unit in self.enemy_units:
+            if unit.card_type == "building":
+                continue
+            next_y = max(0, unit.y - 1)
+            if self._is_river_row(next_y) and not self._is_bridge_lane_x(unit.x):
+                target_x = self._nearest_bridge_x(unit.x)
+                if unit.x < target_x:
+                    try_move(unit, unit.x + 1, unit.y)
+                elif unit.x > target_x:
+                    try_move(unit, unit.x - 1, unit.y)
+            else:
+                try_move(unit, unit.x, next_y)
+
+        for unit in sorted(self.enemy_units, key=lambda u: (-u.y, u.x)):
             unit.ttl -= 1
             unit.hp -= 0.2
-            if unit.card_type != "building":
-                next_y = min(self.cfg.grid_h - 1, unit.y + 1)
-                if self._is_river_row(next_y) and not self._is_bridge_lane_x(unit.x):
-                    target_x = self._nearest_bridge_x(unit.x)
-                    if unit.x < target_x:
-                        unit.x += 1
-                    elif unit.x > target_x:
-                        unit.x -= 1
-                else:
-                    unit.y = next_y
+            if unit.card_type == "building":
+                continue
+            next_y = min(self.cfg.grid_h - 1, unit.y + 1)
+            if self._is_river_row(next_y) and not self._is_bridge_lane_x(unit.x):
+                target_x = self._nearest_bridge_x(unit.x)
+                if unit.x < target_x:
+                    try_move(unit, unit.x + 1, unit.y)
+                elif unit.x > target_x:
+                    try_move(unit, unit.x - 1, unit.y)
+            else:
+                try_move(unit, unit.x, next_y)
 
         self.own_units = [u for u in self.own_units if u.ttl > 0 and u.hp > 0.0]
         self.enemy_units = [u for u in self.enemy_units if u.ttl > 0 and u.hp > 0.0]

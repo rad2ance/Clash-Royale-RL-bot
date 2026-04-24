@@ -520,3 +520,78 @@ def test_optional_low_res_unit_density_observation() -> None:
     assert obs["unit_density"].shape == (2, 6, 5)
     flat = flatten_observation(obs)
     assert flat.shape[0] == 8 + env.cfg.hand_size + env.cfg.hand_size + (2 * 6 * 5)
+
+
+def test_unit_does_not_move_into_occupied_forward_cell() -> None:
+    env = CrLikeSimEnv(config=SimConfig(enemy_spawn_chance=0.0, max_units_per_cell=1))
+    env.reset(seed=0)
+    mover_start_y = min(env.cfg.grid_h - 1, env.deploy_min_y + 3)
+    blocker_y = mover_start_y - 1
+    x = env.cfg.grid_w // 2
+    mover = ActiveUnit(
+        x=x,
+        y=mover_start_y,
+        hp=40.0,
+        dps=8.0,
+        ttl=5,
+        card_type="troop",
+        target_type="ground",
+        can_hit_air=False,
+        is_air=False,
+        is_enemy=False,
+    )
+    blocker = ActiveUnit(
+        x=x,
+        y=blocker_y,
+        hp=40.0,
+        dps=8.0,
+        ttl=5,
+        card_type="building",
+        target_type="ground",
+        can_hit_air=False,
+        is_air=False,
+        is_enemy=False,
+    )
+    env.own_units = [mover, blocker]
+    env.step(env.noop_action)
+    assert env.own_units
+    moved = next(u for u in env.own_units if u is mover)
+    assert moved.y == mover_start_y
+
+
+def test_unit_does_not_sidestep_into_occupied_bridge_cell() -> None:
+    env = CrLikeSimEnv(config=SimConfig(enemy_spawn_chance=0.0, max_units_per_cell=1))
+    env.reset(seed=0)
+    start_y = env.river_bottom_y + 1
+    start_x = 0
+    sidestep_target_x = 1
+    mover = ActiveUnit(
+        x=start_x,
+        y=start_y,
+        hp=40.0,
+        dps=8.0,
+        ttl=5,
+        card_type="troop",
+        target_type="ground",
+        can_hit_air=False,
+        is_air=False,
+        is_enemy=False,
+    )
+    blocker = ActiveUnit(
+        x=sidestep_target_x,
+        y=start_y,
+        hp=40.0,
+        dps=8.0,
+        ttl=5,
+        card_type="troop",
+        target_type="ground",
+        can_hit_air=False,
+        is_air=False,
+        is_enemy=False,
+    )
+    env.own_units = [mover, blocker]
+    env.step(env.noop_action)
+    assert env.own_units
+    moved = next(u for u in env.own_units if u is mover)
+    assert moved.x == start_x
+    assert moved.y == start_y
