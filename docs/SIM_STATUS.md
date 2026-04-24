@@ -24,6 +24,7 @@
   - lane-aware tower pressure targeting + princess fallback retargeting
   - per-unit lane target lock with retarget on objective destruction
   - archetype-aware projectile speed/splash profiles (in projectile mode)
+  - movement speed tiers via per-unit move intervals
 - Visual debugging:
   - `env.render()` RGB frames
   - GIF + CSV export via `scripts/visualize_sim_episode.py`
@@ -46,7 +47,7 @@
   - partial tower-target lock/retarget behavior
 - Pathing fidelity:
   - partial lane-objective pathing around bridges/towers
-  - more realistic movement speeds and stopping logic
+  - partial movement speed realism (interval-based, not continuous velocity)
 - Match rules:
   - basic single-phase overtime extension (simplified sudden-death proxy)
   - overtime/sudden death exact tie-break details

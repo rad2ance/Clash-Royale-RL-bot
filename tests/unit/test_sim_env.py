@@ -707,8 +707,8 @@ def test_unit_profile_has_archetype_specific_projectile_speed() -> None:
     building = env.get_card_meta(env.cfg.spell_card_count)
     troop_any = env.get_card_meta(env.cfg.spell_card_count + env.cfg.building_card_count + 1)
 
-    _, _, _, _, _, _, _, building_speed = env._unit_profile(building, float(building.elixir_cost))
-    _, _, _, _, _, _, _, troop_speed = env._unit_profile(troop_any, float(troop_any.elixir_cost))
+    _, _, _, _, _, _, _, building_speed, _ = env._unit_profile(building, float(building.elixir_cost))
+    _, _, _, _, _, _, _, troop_speed, _ = env._unit_profile(troop_any, float(troop_any.elixir_cost))
     assert troop_speed > building_speed
 
 
@@ -946,3 +946,45 @@ def test_lane_objective_retargets_when_locked_princess_destroyed() -> None:
     retarget_x = env._lane_objective_x(attacking_enemy=True, unit=unit)
     assert unit.objective_lane == 1
     assert retarget_x == env._nearest_bridge_x(env.cfg.grid_w - 1)
+
+
+def test_unit_profile_includes_speed_tiers() -> None:
+    env = CrLikeSimEnv()
+    ground_troop = env.get_card_meta(env.cfg.spell_card_count + env.cfg.building_card_count)
+    any_troop = env.get_card_meta(env.cfg.spell_card_count + env.cfg.building_card_count + 1)
+    assert ground_troop.target_type == "ground"
+    assert any_troop.target_type == "any"
+    *_, ground_interval = env._unit_profile(ground_troop, float(ground_troop.elixir_cost))
+    *_, any_interval = env._unit_profile(any_troop, float(any_troop.elixir_cost))
+    assert int(ground_interval) > int(any_interval)
+
+
+def test_move_interval_two_advances_every_other_step() -> None:
+    env = CrLikeSimEnv(config=SimConfig(enemy_spawn_chance=0.0))
+    env.reset(seed=0)
+    start_y = min(env.cfg.grid_h - 1, env.deploy_min_y + 3)
+    env.own_units = [
+        ActiveUnit(
+            x=env.cfg.grid_w // 2,
+            y=start_y,
+            hp=40.0,
+            dps=8.0,
+            ttl=6,
+            card_type="troop",
+            target_type="ground",
+            can_hit_air=False,
+            is_air=False,
+            is_enemy=False,
+            move_interval_steps=2,
+            move_cooldown_remaining=0,
+        )
+    ]
+    env.step(env.noop_action)
+    y1 = env.own_units[0].y
+    env.step(env.noop_action)
+    y2 = env.own_units[0].y
+    env.step(env.noop_action)
+    y3 = env.own_units[0].y
+    assert y1 == start_y - 1
+    assert y2 == y1
+    assert y3 == y2 - 1

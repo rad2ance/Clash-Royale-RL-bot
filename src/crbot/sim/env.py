@@ -84,6 +84,8 @@ class ActiveUnit:
     splash_radius: float = 0.0
     projectile_speed_cells_per_step: float = 2.5
     objective_lane: int | None = None  # 0=left, 1=right; lock until invalid
+    move_interval_steps: int = 1
+    move_cooldown_remaining: int = 0
 
 
 @dataclass(frozen=True)
@@ -413,10 +415,11 @@ class CrLikeSimEnv(gym.Env):
 
     def _unit_profile(
         self, card: CardMeta, cost: float
-    ) -> tuple[float, float, int, int, int, float, float, float]:
+    ) -> tuple[float, float, int, int, int, float, float, float, int]:
         cooldown = max(1, int(self.cfg.attack_cooldown_steps))
         splash = 0.0
         projectile_speed = float(self.cfg.projectile_speed_cells_per_step)
+        move_interval = 1
         if card.card_type == "building":
             dps = 3.2 * cost
             hp = 32.0 * cost
@@ -432,19 +435,34 @@ class CrLikeSimEnv(gym.Env):
             dps *= 1.08
         if card.target_type == "ground":
             hp *= 1.12
+            move_interval = 2
         if card.target_type == "area":
             splash = float(self.cfg.area_splash_radius_cells * 1.2)
             projectile_speed *= 0.8
+            move_interval = max(move_interval, 2)
         elif card.target_type == "any":
             projectile_speed *= 1.1
+            move_interval = 1
         hit_damage = dps * self.cfg.step_seconds * float(cooldown)
         projectile_speed = max(0.5, float(projectile_speed))
-        return dps, hp, ttl, int(attack_range), cooldown, float(hit_damage), splash, projectile_speed
+        return (
+            dps,
+            hp,
+            ttl,
+            int(attack_range),
+            cooldown,
+            float(hit_damage),
+            splash,
+            projectile_speed,
+            int(move_interval),
+        )
 
     def _spawn_friendly_unit(self, card: CardMeta, x: int, y: int, cost: float) -> None:
         if card.card_type == "spell":
             return
-        dps, hp, ttl, attack_range, cooldown, hit_damage, splash, projectile_speed = self._unit_profile(card, cost)
+        dps, hp, ttl, attack_range, cooldown, hit_damage, splash, projectile_speed, move_interval = self._unit_profile(
+            card, cost
+        )
         self.own_units.append(
             ActiveUnit(
                 x=int(np.clip(x, 0, self.cfg.grid_w - 1)),
@@ -463,6 +481,8 @@ class CrLikeSimEnv(gym.Env):
                 hit_damage=hit_damage,
                 splash_radius=float(splash),
                 projectile_speed_cells_per_step=float(projectile_speed),
+                move_interval_steps=max(1, int(move_interval)),
+                move_cooldown_remaining=0,
             )
         )
 
@@ -490,6 +510,8 @@ class CrLikeSimEnv(gym.Env):
                 hit_damage=float(3.8 * cost * self.cfg.step_seconds * max(1, int(self.cfg.attack_cooldown_steps))),
                 splash_radius=0.0,
                 projectile_speed_cells_per_step=float(self.cfg.projectile_speed_cells_per_step),
+                move_interval_steps=2,
+                move_cooldown_remaining=0,
             )
         )
 
@@ -765,6 +787,9 @@ class CrLikeSimEnv(gym.Env):
             unit.hp -= 0.2
             if unit.card_type == "building":
                 continue
+            if unit.move_cooldown_remaining > 0:
+                unit.move_cooldown_remaining = max(0, int(unit.move_cooldown_remaining) - 1)
+                continue
             next_y = max(0, unit.y - 1)
             if self._is_river_row(next_y) and not self._is_bridge_lane_x(unit.x):
                 target_x = self._nearest_bridge_x(unit.x)
@@ -786,11 +811,15 @@ class CrLikeSimEnv(gym.Env):
                     try_move(unit, unit.x, next_y)
             else:
                 try_move(unit, unit.x, next_y)
+            unit.move_cooldown_remaining = max(0, int(unit.move_interval_steps) - 1)
 
         for unit in sorted(self.enemy_units, key=lambda u: (-u.y, u.x)):
             unit.ttl -= 1
             unit.hp -= 0.2
             if unit.card_type == "building":
+                continue
+            if unit.move_cooldown_remaining > 0:
+                unit.move_cooldown_remaining = max(0, int(unit.move_cooldown_remaining) - 1)
                 continue
             next_y = min(self.cfg.grid_h - 1, unit.y + 1)
             if self._is_river_row(next_y) and not self._is_bridge_lane_x(unit.x):
@@ -813,6 +842,7 @@ class CrLikeSimEnv(gym.Env):
                     try_move(unit, unit.x, next_y)
             else:
                 try_move(unit, unit.x, next_y)
+            unit.move_cooldown_remaining = max(0, int(unit.move_interval_steps) - 1)
 
         self.own_units = [u for u in self.own_units if u.ttl > 0 and u.hp > 0.0]
         self.enemy_units = [u for u in self.enemy_units if u.ttl > 0 and u.hp > 0.0]
