@@ -675,7 +675,8 @@ def test_enemy_side_pathing_drifts_toward_lane_objective() -> None:
     env.step(env.noop_action)
     assert env.own_units
     moved = env.own_units[0]
-    assert moved.x == (env.cfg.grid_w // 2) + 1
+    assert moved.y == env.river_top_y  # in bridge-approach band: align laterally first
+    assert moved.x != (env.cfg.grid_w // 2)
 
 
 def test_enemy_side_pathing_switches_lane_when_preferred_princess_is_down() -> None:
@@ -962,7 +963,7 @@ def test_unit_profile_includes_speed_tiers() -> None:
 def test_move_interval_two_advances_every_other_step() -> None:
     env = CrLikeSimEnv(config=SimConfig(enemy_spawn_chance=0.0))
     env.reset(seed=0)
-    start_y = min(env.cfg.grid_h - 1, env.deploy_min_y + 3)
+    start_y = min(env.cfg.grid_h - 1, env.deploy_min_y + env.cfg.bridge_approach_rows + 2)
     env.own_units = [
         ActiveUnit(
             x=env.cfg.grid_w // 2,
@@ -988,3 +989,55 @@ def test_move_interval_two_advances_every_other_step() -> None:
     assert y1 == start_y - 1
     assert y2 == y1
     assert y3 == y2 - 1
+
+
+def test_friendly_unit_starts_bridge_alignment_before_river_row() -> None:
+    env = CrLikeSimEnv(config=SimConfig(enemy_spawn_chance=0.0, bridge_approach_rows=3))
+    env.reset(seed=0)
+    start_y = env.river_bottom_y + 3
+    start_x = 0
+    env.own_units = [
+        ActiveUnit(
+            x=start_x,
+            y=start_y,
+            hp=40.0,
+            dps=8.0,
+            ttl=6,
+            card_type="troop",
+            target_type="ground",
+            can_hit_air=False,
+            is_air=False,
+            is_enemy=False,
+            move_interval_steps=1,
+        )
+    ]
+    env.step(env.noop_action)
+    unit = env.own_units[0]
+    assert unit.y == start_y  # lateral align first in approach band
+    assert unit.x != start_x
+
+
+def test_enemy_unit_starts_bridge_alignment_before_river_row() -> None:
+    env = CrLikeSimEnv(config=SimConfig(enemy_spawn_chance=0.0, bridge_approach_rows=3))
+    env.reset(seed=0)
+    start_y = env.river_top_y - 3
+    start_x = 0
+    env.enemy_units = [
+        ActiveUnit(
+            x=start_x,
+            y=start_y,
+            hp=40.0,
+            dps=8.0,
+            ttl=6,
+            card_type="troop",
+            target_type="ground",
+            can_hit_air=False,
+            is_air=False,
+            is_enemy=True,
+            move_interval_steps=1,
+        )
+    ]
+    env.step(env.noop_action)
+    unit = env.enemy_units[0]
+    assert unit.y == start_y
+    assert unit.x != start_x

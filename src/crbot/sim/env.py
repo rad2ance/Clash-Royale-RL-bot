@@ -37,6 +37,8 @@ class SimConfig:
     # Building placements are constrained to lanes near bridges.
     bridge_xs: tuple[int, ...] = (1, 7)
     bridge_lane_half_width: int = 0
+    # How many rows before the river units start aligning to their bridge lane.
+    bridge_approach_rows: int = 3
     enemy_spawn_chance: float = 0.08
     troop_lifetime_steps: int = 18
     building_lifetime_steps: int = 28
@@ -353,6 +355,14 @@ class CrLikeSimEnv(gym.Env):
             return int(np.clip(x, 0, self.cfg.grid_w - 1))
         target = min(self.cfg.bridge_xs, key=lambda bx: abs(int(x) - int(bx)))
         return int(np.clip(target, 0, self.cfg.grid_w - 1))
+
+    def _in_bridge_approach_band(self, *, y: int, moving_to_enemy: bool) -> bool:
+        rows = max(0, int(self.cfg.bridge_approach_rows))
+        if rows <= 0:
+            return False
+        if moving_to_enemy:
+            return int(y) <= int(self.river_bottom_y + rows)
+        return int(y) >= int(self.river_top_y - rows)
 
     def _lane_objective_x(self, *, attacking_enemy: bool, unit: ActiveUnit) -> int:
         """
@@ -791,7 +801,8 @@ class CrLikeSimEnv(gym.Env):
                 unit.move_cooldown_remaining = max(0, int(unit.move_cooldown_remaining) - 1)
                 continue
             next_y = max(0, unit.y - 1)
-            if self._is_river_row(next_y) and not self._is_bridge_lane_x(unit.x):
+            in_approach = self._in_bridge_approach_band(y=unit.y, moving_to_enemy=True)
+            if (in_approach or self._is_river_row(next_y)) and not self._is_bridge_lane_x(unit.x):
                 target_x = self._nearest_bridge_x(unit.x)
                 if unit.x < target_x:
                     try_move(unit, unit.x + 1, unit.y)
@@ -822,7 +833,8 @@ class CrLikeSimEnv(gym.Env):
                 unit.move_cooldown_remaining = max(0, int(unit.move_cooldown_remaining) - 1)
                 continue
             next_y = min(self.cfg.grid_h - 1, unit.y + 1)
-            if self._is_river_row(next_y) and not self._is_bridge_lane_x(unit.x):
+            in_approach = self._in_bridge_approach_band(y=unit.y, moving_to_enemy=False)
+            if (in_approach or self._is_river_row(next_y)) and not self._is_bridge_lane_x(unit.x):
                 target_x = self._nearest_bridge_x(unit.x)
                 if unit.x < target_x:
                     try_move(unit, unit.x + 1, unit.y)

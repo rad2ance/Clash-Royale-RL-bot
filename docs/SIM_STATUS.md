@@ -47,6 +47,7 @@
   - partial tower-target lock/retarget behavior
 - Pathing fidelity:
   - partial lane-objective pathing around bridges/towers
+  - early bridge-approach alignment (units steer to bridge before river row)
   - partial movement speed realism (interval-based, not continuous velocity)
 - Match rules:
   - basic single-phase overtime extension (simplified sudden-death proxy)
