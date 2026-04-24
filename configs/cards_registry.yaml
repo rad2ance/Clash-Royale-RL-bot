@@ -63,6 +63,10 @@ cards:
     name: Musketeer
     aliases: [musketeer, musk]
     elixir_cost: 4
+    extra:
+      sim_profile:
+        attack_range_cells: 5
+        projectile_speed_cells_per_step: 3.2
   - card_id: 8
     archetypes: [troop_any]
     name: Archers
@@ -78,6 +82,10 @@ cards:
     name: Minions
     aliases: [minions]
     elixir_cost: 2
+    extra:
+      sim_profile:
+        is_air: true
+        move_interval_steps: 1
   - card_id: 11
     archetypes: [troop_ground]
     name: Valkyrie

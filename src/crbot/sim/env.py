@@ -70,6 +70,16 @@ class CardMeta:
     card_type: str  # "spell" | "building" | "troop"
     target_type: str  # "ground" | "air" | "any" | "area"
     can_hit_air: bool
+    # Optional per-card simulator overrides loaded from registry.
+    hp_scale: float | None = None
+    dps_scale: float | None = None
+    ttl_steps: int | None = None
+    attack_range_cells: int | None = None
+    attack_cooldown_steps: int | None = None
+    splash_radius_cells: float | None = None
+    projectile_speed_cells_per_step: float | None = None
+    move_interval_steps: int | None = None
+    is_air: bool | None = None
 
 
 @dataclass
@@ -220,6 +230,33 @@ class CrLikeSimEnv(gym.Env):
                     card_type=str(entry.card_type),
                     target_type=str(entry.target_type),
                     can_hit_air=bool(entry.can_hit_air),
+                    hp_scale=None
+                    if not isinstance((entry.extra or {}).get("sim_profile"), dict)
+                    else ((entry.extra or {}).get("sim_profile") or {}).get("hp_scale"),
+                    dps_scale=None
+                    if not isinstance((entry.extra or {}).get("sim_profile"), dict)
+                    else ((entry.extra or {}).get("sim_profile") or {}).get("dps_scale"),
+                    ttl_steps=None
+                    if not isinstance((entry.extra or {}).get("sim_profile"), dict)
+                    else ((entry.extra or {}).get("sim_profile") or {}).get("ttl_steps"),
+                    attack_range_cells=None
+                    if not isinstance((entry.extra or {}).get("sim_profile"), dict)
+                    else ((entry.extra or {}).get("sim_profile") or {}).get("attack_range_cells"),
+                    attack_cooldown_steps=None
+                    if not isinstance((entry.extra or {}).get("sim_profile"), dict)
+                    else ((entry.extra or {}).get("sim_profile") or {}).get("attack_cooldown_steps"),
+                    splash_radius_cells=None
+                    if not isinstance((entry.extra or {}).get("sim_profile"), dict)
+                    else ((entry.extra or {}).get("sim_profile") or {}).get("splash_radius_cells"),
+                    projectile_speed_cells_per_step=None
+                    if not isinstance((entry.extra or {}).get("sim_profile"), dict)
+                    else ((entry.extra or {}).get("sim_profile") or {}).get("projectile_speed_cells_per_step"),
+                    move_interval_steps=None
+                    if not isinstance((entry.extra or {}).get("sim_profile"), dict)
+                    else ((entry.extra or {}).get("sim_profile") or {}).get("move_interval_steps"),
+                    is_air=None
+                    if not isinstance((entry.extra or {}).get("sim_profile"), dict)
+                    else ((entry.extra or {}).get("sim_profile") or {}).get("is_air"),
                 )
                 for cid, entry in registry.items()
             }
@@ -482,6 +519,24 @@ class CrLikeSimEnv(gym.Env):
         elif card.target_type == "any":
             projectile_speed *= 1.1
             move_interval = 1
+
+        if card.hp_scale is not None:
+            hp *= max(0.1, float(card.hp_scale))
+        if card.dps_scale is not None:
+            dps *= max(0.1, float(card.dps_scale))
+        if card.ttl_steps is not None:
+            ttl = max(1, int(card.ttl_steps))
+        if card.attack_range_cells is not None:
+            attack_range = max(1, int(card.attack_range_cells))
+        if card.attack_cooldown_steps is not None:
+            cooldown = max(1, int(card.attack_cooldown_steps))
+        if card.splash_radius_cells is not None:
+            splash = max(0.0, float(card.splash_radius_cells))
+        if card.projectile_speed_cells_per_step is not None:
+            projectile_speed = max(0.5, float(card.projectile_speed_cells_per_step))
+        if card.move_interval_steps is not None:
+            move_interval = max(1, int(card.move_interval_steps))
+
         hit_damage = dps * self.cfg.step_seconds * float(cooldown)
         projectile_speed = max(0.5, float(projectile_speed))
         return (
@@ -503,6 +558,8 @@ class CrLikeSimEnv(gym.Env):
         In the absence of per-card canonical mechanics, we treat "any"-targeting
         troops as air-capable flying units.
         """
+        if card.is_air is not None:
+            return bool(card.card_type == "troop" and card.is_air)
         return card.card_type == "troop" and card.target_type == "any" and bool(card.can_hit_air)
 
     def _spawn_friendly_unit(self, card: CardMeta, x: int, y: int, cost: float) -> None:

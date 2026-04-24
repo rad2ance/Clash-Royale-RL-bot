@@ -1145,3 +1145,50 @@ def test_enemy_unit_starts_bridge_alignment_before_river_row() -> None:
     unit = env.enemy_units[0]
     assert unit.y == start_y
     assert unit.x != start_x
+
+
+def test_unit_profile_respects_card_sim_overrides() -> None:
+    env = CrLikeSimEnv(config=SimConfig(enemy_spawn_chance=0.0))
+    card = env.get_card_meta(5)
+    tuned = type(card)(
+        card_id=card.card_id,
+        name=card.name,
+        elixir_cost=card.elixir_cost,
+        card_type=card.card_type,
+        target_type=card.target_type,
+        can_hit_air=card.can_hit_air,
+        hp_scale=1.5,
+        dps_scale=0.8,
+        ttl_steps=99,
+        attack_range_cells=7,
+        attack_cooldown_steps=5,
+        splash_radius_cells=2.0,
+        projectile_speed_cells_per_step=3.5,
+        move_interval_steps=4,
+    )
+    dps, hp, ttl, attack_range, cooldown, _, splash, proj_speed, move_interval = env._unit_profile(
+        tuned, float(tuned.elixir_cost)
+    )
+    assert ttl == 99
+    assert attack_range == 7
+    assert cooldown == 5
+    assert splash == 2.0
+    assert proj_speed == 3.5
+    assert move_interval == 4
+    assert dps > 0.0
+    assert hp > 0.0
+
+
+def test_is_air_troop_card_can_be_overridden_from_card_meta() -> None:
+    env = CrLikeSimEnv(config=SimConfig(enemy_spawn_chance=0.0))
+    card = env.get_card_meta(5)
+    forced_air = type(card)(
+        card_id=card.card_id,
+        name=card.name,
+        elixir_cost=card.elixir_cost,
+        card_type=card.card_type,
+        target_type=card.target_type,
+        can_hit_air=card.can_hit_air,
+        is_air=True,
+    )
+    assert env._is_air_troop_card(forced_air) is True
