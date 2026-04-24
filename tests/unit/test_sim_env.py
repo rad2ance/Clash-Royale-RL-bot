@@ -595,3 +595,60 @@ def test_unit_does_not_sidestep_into_occupied_bridge_cell() -> None:
     moved = next(u for u in env.own_units if u is mover)
     assert moved.x == start_x
     assert moved.y == start_y
+
+
+def test_left_lane_unit_pressures_left_princess_more() -> None:
+    env = CrLikeSimEnv(config=SimConfig(enemy_spawn_chance=0.0))
+    env.reset(seed=0)
+    left_before = float(env.enemy_princess_hps[0])
+    right_before = float(env.enemy_princess_hps[1])
+    env.own_units = [
+        ActiveUnit(
+            x=0,
+            y=env.river_top_y,
+            hp=50.0,
+            dps=20.0,
+            ttl=4,
+            card_type="troop",
+            target_type="any",
+            can_hit_air=True,
+            is_air=False,
+            is_enemy=False,
+            attack_range=2,
+            attack_cooldown_steps=2,
+            cooldown_remaining=0,
+            hit_damage=14.0,
+        )
+    ]
+    env.step(env.noop_action)
+    left_loss = left_before - float(env.enemy_princess_hps[0])
+    right_loss = right_before - float(env.enemy_princess_hps[1])
+    assert left_loss > 0.0
+    assert right_loss == 0.0
+
+
+def test_tower_pressure_retargets_when_preferred_princess_is_destroyed() -> None:
+    env = CrLikeSimEnv(config=SimConfig(enemy_spawn_chance=0.0))
+    env.reset(seed=0)
+    env.enemy_princess_hps[0] = 0.0
+    right_before = float(env.enemy_princess_hps[1])
+    env.own_units = [
+        ActiveUnit(
+            x=0,
+            y=env.river_top_y,
+            hp=50.0,
+            dps=20.0,
+            ttl=4,
+            card_type="troop",
+            target_type="any",
+            can_hit_air=True,
+            is_air=False,
+            is_enemy=False,
+            attack_range=2,
+            attack_cooldown_steps=2,
+            cooldown_remaining=0,
+            hit_damage=14.0,
+        )
+    ]
+    env.step(env.noop_action)
+    assert float(env.enemy_princess_hps[1]) < right_before

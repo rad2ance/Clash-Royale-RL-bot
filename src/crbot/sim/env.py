@@ -548,11 +548,58 @@ class CrLikeSimEnv(gym.Env):
     def _in_own_tower_zone(self, unit: ActiveUnit) -> bool:
         return unit.y >= self.river_bottom_y
 
+    def _apply_tower_pressure(self, *, to_enemy: bool, pressure: float, unit_x: int) -> tuple[float, float]:
+        """
+        Apply tower/objective pressure with simple lane-aware princess targeting.
+
+        Returns (damage_to_enemy, damage_to_self) bookkeeping for reward shaping.
+        """
+        damage_to_enemy = 0.0
+        damage_to_self = 0.0
+        if pressure <= 0.0:
+            return damage_to_enemy, damage_to_self
+
+        if to_enemy:
+            damage_to_enemy += pressure
+            alive = self.enemy_princess_hps > 0.0
+            if bool(alive.any()):
+                # Left lane pressures left princess more often; right lane mirrors.
+                prefer = 0 if int(unit_x) < (self.cfg.grid_w // 2) else 1
+                if not alive[prefer]:
+                    prefer = 1 - prefer
+                princess_share = 0.85
+                king_share = 1.0 - princess_share
+                self.enemy_princess_hps[prefer] = max(
+                    0.0,
+                    float(self.enemy_princess_hps[prefer] - princess_share * pressure),
+                )
+                self.enemy_king_hp = max(0.0, self.enemy_king_hp - king_share * pressure)
+            else:
+                self.enemy_king_hp = max(0.0, self.enemy_king_hp - pressure)
+            self.enemy_princess_hps = np.clip(self.enemy_princess_hps, 0.0, self.cfg.princess_hp)
+            return damage_to_enemy, damage_to_self
+
+        damage_to_self += pressure
+        alive = self.own_princess_hps > 0.0
+        if bool(alive.any()):
+            prefer = 0 if int(unit_x) < (self.cfg.grid_w // 2) else 1
+            if not alive[prefer]:
+                prefer = 1 - prefer
+            princess_share = 0.85
+            king_share = 1.0 - princess_share
+            self.own_princess_hps[prefer] = max(
+                0.0,
+                float(self.own_princess_hps[prefer] - princess_share * pressure),
+            )
+            self.own_king_hp = max(0.0, self.own_king_hp - king_share * pressure)
+        else:
+            self.own_king_hp = max(0.0, self.own_king_hp - pressure)
+        self.own_princess_hps = np.clip(self.own_princess_hps, 0.0, self.cfg.princess_hp)
+        return damage_to_enemy, damage_to_self
+
     def _process_tower_attacks(self, attacked_own: set[int], attacked_enemy: set[int]) -> tuple[float, float]:
         damage_to_enemy = 0.0
         damage_to_self = 0.0
-        own_king_share = 0.55
-        enemy_king_share = 0.55
 
         for unit in self.own_units:
             if id(unit) in attacked_own or unit.cooldown_remaining > 0 or not self._in_enemy_tower_zone(unit):
@@ -566,9 +613,9 @@ class CrLikeSimEnv(gym.Env):
                     target_towers=True,
                 )
             else:
-                damage_to_enemy += pressure
-                self.enemy_king_hp = max(0.0, self.enemy_king_hp - own_king_share * pressure)
-                self.enemy_princess_hps -= (1.0 - own_king_share) * pressure
+                dmg_e, dmg_s = self._apply_tower_pressure(to_enemy=True, pressure=pressure, unit_x=unit.x)
+                damage_to_enemy += dmg_e
+                damage_to_self += dmg_s
             unit.cooldown_remaining = unit.attack_cooldown_steps
 
         for unit in self.enemy_units:
@@ -583,9 +630,9 @@ class CrLikeSimEnv(gym.Env):
                     target_towers=True,
                 )
             else:
-                damage_to_self += pressure
-                self.own_king_hp = max(0.0, self.own_king_hp - enemy_king_share * pressure)
-                self.own_princess_hps -= (1.0 - enemy_king_share) * pressure
+                dmg_e, dmg_s = self._apply_tower_pressure(to_enemy=False, pressure=pressure, unit_x=unit.x)
+                damage_to_enemy += dmg_e
+                damage_to_self += dmg_s
             unit.cooldown_remaining = unit.attack_cooldown_steps
 
         self.enemy_princess_hps = np.clip(self.enemy_princess_hps, 0.0, self.cfg.princess_hp)

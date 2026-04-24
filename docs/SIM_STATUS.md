@@ -19,6 +19,7 @@
   - closest-target duel logic
   - bridge-aware river crossing pathing
   - per-cell occupancy cap to prevent unrealistic unit stacking
+  - lane-aware tower pressure targeting + princess fallback retargeting
 - Visual debugging:
   - `env.render()` RGB frames
   - GIF + CSV export via `scripts/visualize_sim_episode.py`
@@ -33,7 +34,7 @@
 - Board simulation fidelity:
   - richer collision/avoidance beyond simple occupancy cap
   - richer projectile/splash geometry and card-specific projectiles
-  - exact tower targeting/retarget behavior
+  - exact tower targeting/retarget timing behavior
 - Pathing fidelity:
   - lane/path graph around bridges and towers
   - more realistic movement speeds and stopping logic
