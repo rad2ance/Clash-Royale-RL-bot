@@ -20,6 +20,13 @@ def main() -> None:
         action="store_true",
         help="Include all cards, not only cards tagged needs_review.",
     )
+    parser.add_argument(
+        "--no-fallback-include-reviewed",
+        dest="fallback_include_reviewed",
+        action="store_false",
+        default=True,
+        help="Disable auto-fallback to include reviewed cards when needs_review backlog is empty.",
+    )
     args = parser.parse_args()
 
     registry_path = Path(args.registry)
@@ -27,14 +34,25 @@ def main() -> None:
         raise FileNotFoundError(registry_path)
     raw = yaml.safe_load(registry_path.read_text(encoding="utf-8"))
 
+    only_needs_review = not args.include_reviewed
     backlog = build_registry_review_backlog(
         raw,
         limit=args.limit,
-        only_needs_review=not args.include_reviewed,
+        only_needs_review=only_needs_review,
     )
+    fallback_used = False
+    if not backlog and only_needs_review and args.fallback_include_reviewed:
+        backlog = build_registry_review_backlog(
+            raw,
+            limit=args.limit,
+            only_needs_review=False,
+        )
+        fallback_used = True
+
     summary = summarize_registry_review_state(raw)
     summary["backlog_size"] = int(len(backlog))
     summary["include_reviewed"] = bool(args.include_reviewed)
+    summary["fallback_include_reviewed_used"] = bool(fallback_used)
     summary["top_preview"] = backlog[:10]
 
     out_jsonl = Path(args.out_jsonl)
@@ -47,6 +65,8 @@ def main() -> None:
     out_summary.parent.mkdir(parents=True, exist_ok=True)
     out_summary.write_text(json.dumps(summary, indent=2, ensure_ascii=True) + "\n", encoding="utf-8")
 
+    if fallback_used:
+        print("[note] no needs_review cards found; falling back to include reviewed cards.")
     print(f"[done] backlog={len(backlog)} -> {out_jsonl.resolve()} | {out_summary.resolve()}")
 
 

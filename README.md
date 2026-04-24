@@ -186,6 +186,9 @@ Build prioritized review backlog with suggested archetypes:
 python scripts/build_card_registry_backlog.py --limit 500
 ```
 
+If no `needs_review` cards exist yet, this command now auto-falls back to include
+reviewed cards (disable with `--no-fallback-include-reviewed`).
+
 ## Important notes
 
 - This is not a full-fidelity Clash Royale simulator yet; it is an RL research harness.
