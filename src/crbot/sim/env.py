@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections import deque
 from dataclasses import dataclass
 from typing import Any
 
@@ -18,6 +19,8 @@ class SimConfig:
     princess_hp: float = 2500.0
     hand_size: int = 4
     n_cards: int = 12
+    deck_size: int = 8
+    unique_deck_cards: bool = True
     spell_card_count: int = 3
     building_card_count: int = 2
     grid_w: int = 9
@@ -90,6 +93,7 @@ class SimStateSnapshot:
     enemy_princess_hps: np.ndarray
     hand_ids: np.ndarray
     hand_costs: np.ndarray
+    next_card_id: int
     own_units: tuple[ActiveUnit, ...]
     enemy_units: tuple[ActiveUnit, ...]
 
@@ -122,6 +126,7 @@ class CrLikeSimEnv(gym.Env):
         super().__init__()
         self.cfg = config or SimConfig()
         self.rng = np.random.default_rng(seed)
+        self._effective_deck_size = max(self.cfg.hand_size + 1, int(self.cfg.deck_size))
 
         self.noop_action = 0
         self.grid_size = self.cfg.grid_w * self.cfg.grid_h
@@ -166,6 +171,8 @@ class CrLikeSimEnv(gym.Env):
         self.enemy_princess_hps = np.full(2, self.cfg.princess_hp, dtype=np.float32)
         self.hand_ids = np.zeros(self.cfg.hand_size, dtype=np.int32)
         self.hand_costs = np.zeros(self.cfg.hand_size, dtype=np.float32)
+        self.deck_ids = np.zeros(self._effective_deck_size, dtype=np.int32)
+        self._draw_cycle: deque[int] = deque()
         self.own_units: list[ActiveUnit] = []
         self.enemy_units: list[ActiveUnit] = []
         self.pending_projectiles: list[PendingProjectile] = []
@@ -221,11 +228,30 @@ class CrLikeSimEnv(gym.Env):
             self.hand_costs[slot] = float(self.get_card_meta(cid).elixir_cost)
 
     def _draw_initial_hand(self) -> None:
-        self.hand_ids = self.rng.integers(0, self.cfg.n_cards, size=self.cfg.hand_size, dtype=np.int32)
+        if self.cfg.unique_deck_cards and self.cfg.n_cards >= self._effective_deck_size:
+            self.deck_ids = self.rng.choice(self.cfg.n_cards, size=self._effective_deck_size, replace=False).astype(
+                np.int32
+            )
+        else:
+            self.deck_ids = self.rng.integers(0, self.cfg.n_cards, size=self._effective_deck_size, dtype=np.int32)
+
+        draw_order = self.deck_ids.astype(np.int32).copy()
+        self.rng.shuffle(draw_order)
+        self.hand_ids = draw_order[: self.cfg.hand_size].astype(np.int32)
+        cycle_seed = draw_order[self.cfg.hand_size :].astype(np.int32).tolist()
+        if not cycle_seed:
+            # Should not happen with effective deck size guard, but keep robust.
+            cycle_seed = draw_order.astype(np.int32).tolist()
+        self._draw_cycle = deque(int(x) for x in cycle_seed)
         self._sync_hand_costs_from_ids()
 
     def _draw_replacement_card(self, slot: int) -> None:
-        self.hand_ids[slot] = int(self.rng.integers(0, self.cfg.n_cards))
+        played_card = int(self.hand_ids[slot])
+        if not self._draw_cycle:
+            self._draw_cycle = deque(int(x) for x in self.deck_ids.astype(np.int32).tolist())
+        next_card = int(self._draw_cycle.popleft())
+        self.hand_ids[slot] = next_card
+        self._draw_cycle.append(played_card)
         self.hand_costs[slot] = float(self.get_card_meta(int(self.hand_ids[slot])).elixir_cost)
 
     def get_state_snapshot(self) -> SimStateSnapshot:
@@ -239,6 +265,7 @@ class CrLikeSimEnv(gym.Env):
             enemy_princess_hps=self.enemy_princess_hps.astype(np.float32).copy(),
             hand_ids=self.hand_ids.astype(np.int32).copy(),
             hand_costs=self.hand_costs.astype(np.float32).copy(),
+            next_card_id=int(self._draw_cycle[0]) if self._draw_cycle else int(self.hand_ids[0]),
             own_units=tuple(self.own_units),
             enemy_units=tuple(self.enemy_units),
         )

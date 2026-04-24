@@ -10,6 +10,7 @@
   - bridge-lane constraints for buildings
   - spells allowed across full arena
 - Deterministic card metadata registry (`card_id -> type/cost/targeting`).
+- Deck-cycle hand replacement (deck queue instead of fully random redraw each play).
 - Card-type-aware instant combat profile in `step()`.
 - Stateful active units:
   - troop/building spawns
@@ -44,7 +45,7 @@
   - overtime/sudden death and tie-break details
   - crown logic and objective priorities
 - Observation realism:
-  - richer state channels (unit maps, card cycle, opponent hidden info model)
+  - richer state channels (unit maps, explicit card cycle exposure, opponent hidden info model)
   - uncertainty/partial observability modeling
 
 ## Observation Architecture

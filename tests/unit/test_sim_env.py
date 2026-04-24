@@ -1,3 +1,5 @@
+from collections import deque
+
 import numpy as np
 
 from crbot.sim import ActiveUnit, CrLikeSimEnv, SimConfig, flatten_observation
@@ -771,3 +773,31 @@ def test_faster_projectile_hits_before_slower_projectile() -> None:
         if hp_after < hp1:
             break
     assert hp_after < hp1
+
+
+def test_draw_replacement_uses_cycle_queue_and_appends_played_card() -> None:
+    env = CrLikeSimEnv(config=SimConfig(enemy_spawn_chance=0.0))
+    env.reset(seed=0)
+    troop_id = env.cfg.spell_card_count + env.cfg.building_card_count + 1
+    env.hand_ids[:] = np.array([troop_id, troop_id, troop_id, troop_id], dtype=np.int32)
+    env._sync_hand_costs_from_ids()
+    env._draw_cycle = deque([6, 7, 8, 9])
+    env.elixir = env.cfg.max_elixir
+
+    slot = 0
+    y = min(env.cfg.grid_h - 1, env.deploy_min_y + 1)
+    x = env.cfg.grid_w // 2
+    action = 1 + slot * env.actions_per_card + y * env.cfg.grid_w + x
+    _, _, _, _, info = env.step(action)
+
+    assert info["legal_action"] is True
+    assert int(env.hand_ids[slot]) == 6
+    assert list(env._draw_cycle) == [7, 8, 9, troop_id]
+
+
+def test_state_snapshot_contains_next_card_from_cycle() -> None:
+    env = CrLikeSimEnv()
+    env.reset(seed=0)
+    env._draw_cycle = deque([11, 10, 9])
+    snap = env.get_state_snapshot()
+    assert int(snap.next_card_id) == 11
