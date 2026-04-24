@@ -21,6 +21,7 @@
   - post-river lane-objective drift toward alive side towers
   - per-cell occupancy cap to prevent unrealistic unit stacking
   - lane-aware tower pressure targeting + princess fallback retargeting
+  - archetype-aware projectile speed/splash profiles (in projectile mode)
 - Visual debugging:
   - `env.render()` RGB frames
   - GIF + CSV export via `scripts/visualize_sim_episode.py`
@@ -34,7 +35,7 @@
   - spell-specific areas/effects and timing windows
 - Board simulation fidelity:
   - richer collision/avoidance beyond simple occupancy cap
-  - richer projectile/splash geometry and card-specific projectiles
+  - richer projectile/splash geometry (partially card-archetype-aware)
   - exact tower targeting/retarget timing behavior
 - Pathing fidelity:
   - partial lane-objective pathing around bridges/towers

@@ -698,3 +698,76 @@ def test_enemy_side_pathing_switches_lane_when_preferred_princess_is_down() -> N
     assert env.own_units
     moved = env.own_units[0]
     assert moved.x < x_before
+
+
+def test_unit_profile_has_archetype_specific_projectile_speed() -> None:
+    env = CrLikeSimEnv()
+    building = env.get_card_meta(env.cfg.spell_card_count)
+    troop_any = env.get_card_meta(env.cfg.spell_card_count + env.cfg.building_card_count + 1)
+
+    _, _, _, _, _, _, _, building_speed = env._unit_profile(building, float(building.elixir_cost))
+    _, _, _, _, _, _, _, troop_speed = env._unit_profile(troop_any, float(troop_any.elixir_cost))
+    assert troop_speed > building_speed
+
+
+def test_faster_projectile_hits_before_slower_projectile() -> None:
+    env = CrLikeSimEnv(
+        config=SimConfig(
+            enemy_spawn_chance=0.0,
+            projectile_travel_enabled=True,
+            projectile_speed_cells_per_step=2.0,
+            attack_cooldown_steps=50,
+        )
+    )
+    env.reset(seed=0)
+
+    slow = ActiveUnit(
+        x=0,
+        y=env.river_top_y,
+        hp=40.0,
+        dps=10.0,
+        ttl=8,
+        card_type="building",
+        target_type="ground",
+        can_hit_air=False,
+        is_air=False,
+        is_enemy=False,
+        attack_range=4,
+        attack_cooldown_steps=50,
+        cooldown_remaining=0,
+        hit_damage=20.0,
+        splash_radius=0.0,
+        projectile_speed_cells_per_step=1.0,
+    )
+    fast = ActiveUnit(
+        x=env.cfg.grid_w - 1,
+        y=env.river_top_y,
+        hp=40.0,
+        dps=10.0,
+        ttl=8,
+        card_type="building",
+        target_type="ground",
+        can_hit_air=False,
+        is_air=False,
+        is_enemy=False,
+        attack_range=4,
+        attack_cooldown_steps=50,
+        cooldown_remaining=0,
+        hit_damage=20.0,
+        splash_radius=0.0,
+        projectile_speed_cells_per_step=4.0,
+    )
+    env.own_units = [slow, fast]
+    hp0 = float(env.enemy_king_hp)
+    env.step(env.noop_action)  # queue projectiles
+    hp1 = float(env.enemy_king_hp)
+    assert hp1 == hp0
+
+    # Fast projectile should land first (within a few steps), while slow one lags.
+    hp_after = hp1
+    for _ in range(4):
+        env.step(env.noop_action)
+        hp_after = float(env.enemy_king_hp)
+        if hp_after < hp1:
+            break
+    assert hp_after < hp1

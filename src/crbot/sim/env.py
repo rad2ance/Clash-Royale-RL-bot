@@ -76,6 +76,7 @@ class ActiveUnit:
     cooldown_remaining: int = 0
     hit_damage: float = 1.0
     splash_radius: float = 0.0
+    projectile_speed_cells_per_step: float = 2.5
 
 
 @dataclass(frozen=True)
@@ -367,14 +368,18 @@ class CrLikeSimEnv(gym.Env):
 
         return offense_mult, self_damage_mult, king_share
 
-    def _unit_profile(self, card: CardMeta, cost: float) -> tuple[float, float, int, int, int, float, float]:
+    def _unit_profile(
+        self, card: CardMeta, cost: float
+    ) -> tuple[float, float, int, int, int, float, float, float]:
         cooldown = max(1, int(self.cfg.attack_cooldown_steps))
         splash = 0.0
+        projectile_speed = float(self.cfg.projectile_speed_cells_per_step)
         if card.card_type == "building":
             dps = 3.2 * cost
             hp = 32.0 * cost
             ttl = self.cfg.building_lifetime_steps
             attack_range = self.cfg.building_attack_range_cells
+            projectile_speed *= 0.9
         else:
             dps = 4.0 * cost
             hp = 18.0 * cost
@@ -385,14 +390,18 @@ class CrLikeSimEnv(gym.Env):
         if card.target_type == "ground":
             hp *= 1.12
         if card.target_type == "area":
-            splash = float(self.cfg.area_splash_radius_cells)
+            splash = float(self.cfg.area_splash_radius_cells * 1.2)
+            projectile_speed *= 0.8
+        elif card.target_type == "any":
+            projectile_speed *= 1.1
         hit_damage = dps * self.cfg.step_seconds * float(cooldown)
-        return dps, hp, ttl, int(attack_range), cooldown, float(hit_damage), splash
+        projectile_speed = max(0.5, float(projectile_speed))
+        return dps, hp, ttl, int(attack_range), cooldown, float(hit_damage), splash, projectile_speed
 
     def _spawn_friendly_unit(self, card: CardMeta, x: int, y: int, cost: float) -> None:
         if card.card_type == "spell":
             return
-        dps, hp, ttl, attack_range, cooldown, hit_damage, splash = self._unit_profile(card, cost)
+        dps, hp, ttl, attack_range, cooldown, hit_damage, splash, projectile_speed = self._unit_profile(card, cost)
         self.own_units.append(
             ActiveUnit(
                 x=int(np.clip(x, 0, self.cfg.grid_w - 1)),
@@ -410,6 +419,7 @@ class CrLikeSimEnv(gym.Env):
                 cooldown_remaining=0,
                 hit_damage=hit_damage,
                 splash_radius=float(splash),
+                projectile_speed_cells_per_step=float(projectile_speed),
             )
         )
 
@@ -436,6 +446,7 @@ class CrLikeSimEnv(gym.Env):
                 cooldown_remaining=0,
                 hit_damage=float(3.8 * cost * self.cfg.step_seconds * max(1, int(self.cfg.attack_cooldown_steps))),
                 splash_radius=0.0,
+                projectile_speed_cells_per_step=float(self.cfg.projectile_speed_cells_per_step),
             )
         )
 
@@ -469,7 +480,7 @@ class CrLikeSimEnv(gym.Env):
         target_towers: bool,
     ) -> None:
         dist = self._distance_cells(attacker.x, attacker.y, target_x, target_y)
-        speed = max(1e-6, float(self.cfg.projectile_speed_cells_per_step))
+        speed = max(1e-6, float(attacker.projectile_speed_cells_per_step))
         ttl = max(1, int(np.ceil(dist / speed)))
         self.pending_projectiles.append(
             PendingProjectile(
