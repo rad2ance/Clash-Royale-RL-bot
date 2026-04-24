@@ -198,3 +198,16 @@ python scripts/bootstrap_github_workflow.py --apply
 
 Re-running is idempotent by default (existing issue titles are skipped). Use
 `--allow-duplicates` if you explicitly want new duplicates.
+
+Sync those managed issues into a GitHub ProjectV2 board (create if missing):
+
+```powershell
+$env:GITHUB_TOKEN="YOUR_TOKEN"
+python scripts/bootstrap_github_workflow.py --apply --sync-project --project-title "Clash Royale RL Bot"
+```
+
+Optional: set a project owner explicitly (user or org login) and status:
+
+```powershell
+python scripts/bootstrap_github_workflow.py --apply --sync-project --project-owner YOUR_LOGIN --project-title "Clash Royale RL Bot" --project-status "Todo"
+```
