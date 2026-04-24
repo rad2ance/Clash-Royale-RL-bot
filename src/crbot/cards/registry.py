@@ -16,6 +16,7 @@ class CardRegistryEntry:
     card_type: str  # "spell" | "building" | "troop"
     target_type: str  # "ground" | "air" | "any" | "area"
     can_hit_air: bool
+    official_api_id: int | None = None
     archetypes: tuple[str, ...] = ()
     tags: tuple[str, ...] = ()
     extra: dict[str, Any] | None = None
@@ -94,6 +95,7 @@ def _validate_entry(raw: dict[str, Any]) -> CardRegistryEntry:
         card_type=card_type,
         target_type=target_type,
         can_hit_air=bool(raw["can_hit_air"]),
+        official_api_id=None if raw.get("official_api_id") is None else int(raw.get("official_api_id")),
         archetypes=archetypes,
         tags=tags,
         extra=extra,

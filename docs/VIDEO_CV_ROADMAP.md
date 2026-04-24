@@ -47,6 +47,7 @@ This is a bootstrap for data plumbing, not final detection quality.
 - Start with a small high-quality labeled set (your own sessions).
 - Use pseudo-labeling on replay/TV videos with human spot-checking.
 - Keep confidence scores and filter low-confidence samples from BC training.
+- Keep card class taxonomy aligned with `configs/cards_registry.yaml`.
 
 ## Practical Guidance
 - Use direct tap logs as ground truth whenever possible.

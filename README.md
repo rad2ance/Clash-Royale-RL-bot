@@ -155,6 +155,20 @@ Card metadata registry:
 - Used by simulator card semantics and intended as shared source for CV labels.
 - Supports archetype inheritance and per-card overrides for scaling to full roster metadata.
 
+Sync official card list into registry stubs (dry-run by default):
+
+```powershell
+python scripts/sync_cards_from_api.py --from-json data/cards_api/cards.json
+python scripts/sync_cards_from_api.py --from-json data/cards_api/cards.json --apply
+```
+
+Or fetch directly from API (requires token env var):
+
+```powershell
+$env:CR_API_TOKEN="YOUR_TOKEN"
+python scripts/sync_cards_from_api.py --apply
+```
+
 ## Important notes
 
 - This is not a full-fidelity Clash Royale simulator yet; it is an RL research harness.

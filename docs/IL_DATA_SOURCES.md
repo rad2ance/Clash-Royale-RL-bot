@@ -38,6 +38,10 @@ Helpful workflow:
 Use shared card classes from `configs/cards_registry.yaml` when defining
 label taxonomy so CV classes map cleanly to simulator card IDs.
 
+You can bootstrap full-card coverage by syncing official card lists into
+reviewable registry stubs:
+- `scripts/sync_cards_from_api.py` (JSON input or live API)
+
 Output:
 - `data/il_video/*.npz`
 
