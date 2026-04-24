@@ -382,6 +382,11 @@ def main() -> None:
         default="Todo",
         help="Single-select status to set on newly added project items (best-effort).",
     )
+    parser.add_argument(
+        "--require-project-sync",
+        action="store_true",
+        help="Fail the script if project sync cannot be completed.",
+    )
     args = parser.parse_args()
 
     if not args.apply:
@@ -433,52 +438,65 @@ def main() -> None:
         managed_issues.append(created)
 
     if args.sync_project:
-        owner_id, owner_login = resolve_project_owner(args.project_owner or None, token)
-        project = find_or_create_project(owner_id, args.project_title, token)
-        project_id = str(project["id"])
-        project_url = str(project.get("url", ""))
-        print(f"[project] using: {args.project_title} ({project_url or 'url unavailable'})")
+        try:
+            owner_id, owner_login = resolve_project_owner(args.project_owner or None, token)
+            project = find_or_create_project(owner_id, args.project_title, token)
+            project_id = str(project["id"])
+            project_url = str(project.get("url", ""))
+            print(f"[project] using: {args.project_title} ({project_url or 'url unavailable'})")
 
-        existing_content_ids, status_field_id, status_options = list_project_items_and_fields(project_id, token)
-        target_status_key = args.project_status.strip().lower()
-        target_status_option_id = status_options.get(target_status_key) if status_field_id else None
+            existing_content_ids, status_field_id, status_options = list_project_items_and_fields(project_id, token)
+            target_status_key = args.project_status.strip().lower()
+            target_status_option_id = status_options.get(target_status_key) if status_field_id else None
 
-        added_count = 0
-        already_present_count = 0
-        status_set_count = 0
-        for issue in managed_issues:
-            node_id = str(issue.get("node_id", "")).strip()
-            if not node_id:
-                print(f"[project] skipping issue with missing node_id: {issue.get('title', '<unknown>')}")
-                continue
-            if node_id in existing_content_ids:
-                already_present_count += 1
-                continue
-            item_id = add_issue_to_project(project_id, node_id, token)
-            added_count += 1
-            existing_content_ids.add(node_id)
-            if status_field_id and target_status_option_id:
-                set_project_item_status(
-                    project_id=project_id,
-                    item_id=item_id,
-                    status_field_id=status_field_id,
-                    status_option_id=target_status_option_id,
-                    token=token,
+            added_count = 0
+            already_present_count = 0
+            status_set_count = 0
+            for issue in managed_issues:
+                node_id = str(issue.get("node_id", "")).strip()
+                if not node_id:
+                    print(f"[project] skipping issue with missing node_id: {issue.get('title', '<unknown>')}")
+                    continue
+                if node_id in existing_content_ids:
+                    already_present_count += 1
+                    continue
+                item_id = add_issue_to_project(project_id, node_id, token)
+                added_count += 1
+                existing_content_ids.add(node_id)
+                if status_field_id and target_status_option_id:
+                    set_project_item_status(
+                        project_id=project_id,
+                        item_id=item_id,
+                        status_field_id=status_field_id,
+                        status_option_id=target_status_option_id,
+                        token=token,
+                    )
+                    status_set_count += 1
+
+            if args.project_status and status_field_id and not target_status_option_id:
+                print(
+                    f"[project] status option '{args.project_status}' not found "
+                    "in project Status field; skipped status assignment."
                 )
-                status_set_count += 1
+            if args.project_status and not status_field_id:
+                print("[project] Status field not found; skipped status assignment.")
 
-        if args.project_status and status_field_id and not target_status_option_id:
             print(
-                f"[project] status option '{args.project_status}' not found "
-                "in project Status field; skipped status assignment."
+                f"[project] sync complete for owner '{owner_login}': "
+                f"added={added_count}, already_present={already_present_count}, status_set={status_set_count}"
             )
-        if args.project_status and not status_field_id:
-            print("[project] Status field not found; skipped status assignment.")
-
-        print(
-            f"[project] sync complete for owner '{owner_login}': "
-            f"added={added_count}, already_present={already_present_count}, status_set={status_set_count}"
-        )
+        except RuntimeError as exc:
+            msg = str(exc)
+            permission_hint = "Resource not accessible by personal access token" in msg
+            print(f"[project] sync failed: {msg}")
+            if permission_hint:
+                print(
+                    "[project] hint: recreate token with Project permissions "
+                    "(classic PAT: 'project' scope; fine-grained PAT: repository access + Projects write)."
+                )
+            if args.require_project_sync:
+                raise
+            print("[project] continuing without project sync. Use --require-project-sync to fail instead.")
 
     print("\n[done] Created issues:")
     if not created_urls:
