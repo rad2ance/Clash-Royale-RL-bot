@@ -315,6 +315,25 @@ class CrLikeSimEnv(gym.Env):
         target = min(self.cfg.bridge_xs, key=lambda bx: abs(int(x) - int(bx)))
         return int(np.clip(target, 0, self.cfg.grid_w - 1))
 
+    def _lane_objective_x(self, *, attacking_enemy: bool, unit_x: int) -> int:
+        """
+        Choose lane objective x for tower pressure pathing.
+
+        If at least one princess tower is alive, bias toward a side tower lane.
+        If both princess towers are down, target king lane center.
+        """
+        mid = self.cfg.grid_w // 2
+        left_lane_x = self._nearest_bridge_x(0)
+        right_lane_x = self._nearest_bridge_x(self.cfg.grid_w - 1)
+        princess_hps = self.enemy_princess_hps if attacking_enemy else self.own_princess_hps
+        alive = princess_hps > 0.0
+        if bool(alive.any()):
+            prefer = 0 if int(unit_x) < mid else 1
+            if not alive[prefer]:
+                prefer = 1 - prefer
+            return left_lane_x if prefer == 0 else right_lane_x
+        return mid
+
     def _combat_profile(self, card: CardMeta) -> tuple[float, float, float]:
         """
         Return (offense_multiplier, self_damage_multiplier, king_damage_share).
@@ -686,6 +705,18 @@ class CrLikeSimEnv(gym.Env):
                     try_move(unit, unit.x + 1, unit.y)
                 elif unit.x > target_x:
                     try_move(unit, unit.x - 1, unit.y)
+            elif unit.y <= self.river_top_y:
+                objective_x = self._lane_objective_x(attacking_enemy=True, unit_x=unit.x)
+                if unit.x < objective_x:
+                    moved = try_move(unit, unit.x + 1, unit.y)
+                    if not moved:
+                        try_move(unit, unit.x, next_y)
+                elif unit.x > objective_x:
+                    moved = try_move(unit, unit.x - 1, unit.y)
+                    if not moved:
+                        try_move(unit, unit.x, next_y)
+                else:
+                    try_move(unit, unit.x, next_y)
             else:
                 try_move(unit, unit.x, next_y)
 
@@ -701,6 +732,18 @@ class CrLikeSimEnv(gym.Env):
                     try_move(unit, unit.x + 1, unit.y)
                 elif unit.x > target_x:
                     try_move(unit, unit.x - 1, unit.y)
+            elif unit.y >= self.river_bottom_y:
+                objective_x = self._lane_objective_x(attacking_enemy=False, unit_x=unit.x)
+                if unit.x < objective_x:
+                    moved = try_move(unit, unit.x + 1, unit.y)
+                    if not moved:
+                        try_move(unit, unit.x, next_y)
+                elif unit.x > objective_x:
+                    moved = try_move(unit, unit.x - 1, unit.y)
+                    if not moved:
+                        try_move(unit, unit.x, next_y)
+                else:
+                    try_move(unit, unit.x, next_y)
             else:
                 try_move(unit, unit.x, next_y)
 

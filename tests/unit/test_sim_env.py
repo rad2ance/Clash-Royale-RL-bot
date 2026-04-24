@@ -652,3 +652,49 @@ def test_tower_pressure_retargets_when_preferred_princess_is_destroyed() -> None
     ]
     env.step(env.noop_action)
     assert float(env.enemy_princess_hps[1]) < right_before
+
+
+def test_enemy_side_pathing_drifts_toward_lane_objective() -> None:
+    env = CrLikeSimEnv(config=SimConfig(enemy_spawn_chance=0.0))
+    env.reset(seed=0)
+    unit = ActiveUnit(
+        x=env.cfg.grid_w // 2,
+        y=env.river_top_y,
+        hp=40.0,
+        dps=8.0,
+        ttl=5,
+        card_type="troop",
+        target_type="ground",
+        can_hit_air=False,
+        is_air=False,
+        is_enemy=False,
+    )
+    env.own_units = [unit]
+    env.step(env.noop_action)
+    assert env.own_units
+    moved = env.own_units[0]
+    assert moved.x == (env.cfg.grid_w // 2) + 1
+
+
+def test_enemy_side_pathing_switches_lane_when_preferred_princess_is_down() -> None:
+    env = CrLikeSimEnv(config=SimConfig(enemy_spawn_chance=0.0))
+    env.reset(seed=0)
+    env.enemy_princess_hps[1] = 0.0
+    unit = ActiveUnit(
+        x=env.cfg.grid_w - 2,
+        y=env.river_top_y,
+        hp=40.0,
+        dps=8.0,
+        ttl=5,
+        card_type="troop",
+        target_type="ground",
+        can_hit_air=False,
+        is_air=False,
+        is_enemy=False,
+    )
+    env.own_units = [unit]
+    x_before = unit.x
+    env.step(env.noop_action)
+    assert env.own_units
+    moved = env.own_units[0]
+    assert moved.x < x_before

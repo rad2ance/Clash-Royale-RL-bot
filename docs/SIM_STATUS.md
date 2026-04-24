@@ -18,6 +18,7 @@
   - optional projectile-travel mode with delayed impacts and splash radius
   - closest-target duel logic
   - bridge-aware river crossing pathing
+  - post-river lane-objective drift toward alive side towers
   - per-cell occupancy cap to prevent unrealistic unit stacking
   - lane-aware tower pressure targeting + princess fallback retargeting
 - Visual debugging:
@@ -36,7 +37,7 @@
   - richer projectile/splash geometry and card-specific projectiles
   - exact tower targeting/retarget timing behavior
 - Pathing fidelity:
-  - lane/path graph around bridges and towers
+  - partial lane-objective pathing around bridges/towers
   - more realistic movement speeds and stopping logic
 - Match rules:
   - overtime/sudden death and tie-break details
