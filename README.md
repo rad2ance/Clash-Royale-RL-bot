@@ -169,6 +169,13 @@ $env:CR_API_TOKEN="YOUR_TOKEN"
 python scripts/sync_cards_from_api.py --apply
 ```
 
+Review and bulk-fix pending stubs:
+
+```powershell
+python scripts/review_card_registry.py --summary --list --tag needs_review --limit 30
+python scripts/review_card_registry.py --tag needs_review --set-archetype troop_any --remove-tag needs_review --add-tag reviewed --apply
+```
+
 ## Important notes
 
 - This is not a full-fidelity Clash Royale simulator yet; it is an RL research harness.

@@ -12,6 +12,9 @@
 - Deterministic card metadata registry (`card_id -> type/cost/targeting`).
 - Canonical card registry file at `configs/cards_registry.yaml` (sim-loaded).
 - Registry supports archetype inheritance (`archetypes` + per-card overrides) for future full-card expansion.
+- API-sync + review tooling:
+  - `scripts/sync_cards_from_api.py`
+  - `scripts/review_card_registry.py`
 - Deck-cycle hand replacement (deck queue instead of fully random redraw each play).
 - Card-type-aware instant combat profile in `step()`.
 - Stateful active units:
