@@ -83,6 +83,7 @@ class ActiveUnit:
     hit_damage: float = 1.0
     splash_radius: float = 0.0
     projectile_speed_cells_per_step: float = 2.5
+    objective_lane: int | None = None  # 0=left, 1=right; lock until invalid
 
 
 @dataclass(frozen=True)
@@ -351,7 +352,7 @@ class CrLikeSimEnv(gym.Env):
         target = min(self.cfg.bridge_xs, key=lambda bx: abs(int(x) - int(bx)))
         return int(np.clip(target, 0, self.cfg.grid_w - 1))
 
-    def _lane_objective_x(self, *, attacking_enemy: bool, unit_x: int) -> int:
+    def _lane_objective_x(self, *, attacking_enemy: bool, unit: ActiveUnit) -> int:
         """
         Choose lane objective x for tower pressure pathing.
 
@@ -364,10 +365,17 @@ class CrLikeSimEnv(gym.Env):
         princess_hps = self.enemy_princess_hps if attacking_enemy else self.own_princess_hps
         alive = princess_hps > 0.0
         if bool(alive.any()):
-            prefer = 0 if int(unit_x) < mid else 1
-            if not alive[prefer]:
-                prefer = 1 - prefer
-            return left_lane_x if prefer == 0 else right_lane_x
+            lane = unit.objective_lane
+            if lane is None:
+                lane = 0 if int(unit.x) < mid else 1
+            lane = int(lane)
+            if lane not in (0, 1) or not alive[lane]:
+                lane = 1 - max(0, min(1, lane))
+            if not alive[lane]:
+                lane = 0 if alive[0] else 1
+            unit.objective_lane = int(lane)
+            return left_lane_x if lane == 0 else right_lane_x
+        unit.objective_lane = None
         return mid
 
     def _combat_profile(self, card: CardMeta) -> tuple[float, float, float]:
@@ -613,7 +621,7 @@ class CrLikeSimEnv(gym.Env):
     def _in_own_tower_zone(self, unit: ActiveUnit) -> bool:
         return unit.y >= self.river_bottom_y
 
-    def _apply_tower_pressure(self, *, to_enemy: bool, pressure: float, unit_x: int) -> tuple[float, float]:
+    def _apply_tower_pressure(self, *, to_enemy: bool, pressure: float, unit: ActiveUnit) -> tuple[float, float]:
         """
         Apply tower/objective pressure with simple lane-aware princess targeting.
 
@@ -628,18 +636,24 @@ class CrLikeSimEnv(gym.Env):
             damage_to_enemy += pressure
             alive = self.enemy_princess_hps > 0.0
             if bool(alive.any()):
-                # Left lane pressures left princess more often; right lane mirrors.
-                prefer = 0 if int(unit_x) < (self.cfg.grid_w // 2) else 1
-                if not alive[prefer]:
-                    prefer = 1 - prefer
+                lane = unit.objective_lane
+                if lane is None:
+                    lane = 0 if int(unit.x) < (self.cfg.grid_w // 2) else 1
+                lane = int(lane)
+                if lane not in (0, 1) or not alive[lane]:
+                    lane = 1 - max(0, min(1, lane))
+                if not alive[lane]:
+                    lane = 0 if alive[0] else 1
+                unit.objective_lane = int(lane)
                 princess_share = 0.85
                 king_share = 1.0 - princess_share
-                self.enemy_princess_hps[prefer] = max(
+                self.enemy_princess_hps[lane] = max(
                     0.0,
-                    float(self.enemy_princess_hps[prefer] - princess_share * pressure),
+                    float(self.enemy_princess_hps[lane] - princess_share * pressure),
                 )
                 self.enemy_king_hp = max(0.0, self.enemy_king_hp - king_share * pressure)
             else:
+                unit.objective_lane = None
                 self.enemy_king_hp = max(0.0, self.enemy_king_hp - pressure)
             self.enemy_princess_hps = np.clip(self.enemy_princess_hps, 0.0, self.cfg.princess_hp)
             return damage_to_enemy, damage_to_self
@@ -647,17 +661,24 @@ class CrLikeSimEnv(gym.Env):
         damage_to_self += pressure
         alive = self.own_princess_hps > 0.0
         if bool(alive.any()):
-            prefer = 0 if int(unit_x) < (self.cfg.grid_w // 2) else 1
-            if not alive[prefer]:
-                prefer = 1 - prefer
+            lane = unit.objective_lane
+            if lane is None:
+                lane = 0 if int(unit.x) < (self.cfg.grid_w // 2) else 1
+            lane = int(lane)
+            if lane not in (0, 1) or not alive[lane]:
+                lane = 1 - max(0, min(1, lane))
+            if not alive[lane]:
+                lane = 0 if alive[0] else 1
+            unit.objective_lane = int(lane)
             princess_share = 0.85
             king_share = 1.0 - princess_share
-            self.own_princess_hps[prefer] = max(
+            self.own_princess_hps[lane] = max(
                 0.0,
-                float(self.own_princess_hps[prefer] - princess_share * pressure),
+                float(self.own_princess_hps[lane] - princess_share * pressure),
             )
             self.own_king_hp = max(0.0, self.own_king_hp - king_share * pressure)
         else:
+            unit.objective_lane = None
             self.own_king_hp = max(0.0, self.own_king_hp - pressure)
         self.own_princess_hps = np.clip(self.own_princess_hps, 0.0, self.cfg.princess_hp)
         return damage_to_enemy, damage_to_self
@@ -678,7 +699,7 @@ class CrLikeSimEnv(gym.Env):
                     target_towers=True,
                 )
             else:
-                dmg_e, dmg_s = self._apply_tower_pressure(to_enemy=True, pressure=pressure, unit_x=unit.x)
+                dmg_e, dmg_s = self._apply_tower_pressure(to_enemy=True, pressure=pressure, unit=unit)
                 damage_to_enemy += dmg_e
                 damage_to_self += dmg_s
             unit.cooldown_remaining = unit.attack_cooldown_steps
@@ -695,7 +716,7 @@ class CrLikeSimEnv(gym.Env):
                     target_towers=True,
                 )
             else:
-                dmg_e, dmg_s = self._apply_tower_pressure(to_enemy=False, pressure=pressure, unit_x=unit.x)
+                dmg_e, dmg_s = self._apply_tower_pressure(to_enemy=False, pressure=pressure, unit=unit)
                 damage_to_enemy += dmg_e
                 damage_to_self += dmg_s
             unit.cooldown_remaining = unit.attack_cooldown_steps
@@ -752,7 +773,7 @@ class CrLikeSimEnv(gym.Env):
                 elif unit.x > target_x:
                     try_move(unit, unit.x - 1, unit.y)
             elif unit.y <= self.river_top_y:
-                objective_x = self._lane_objective_x(attacking_enemy=True, unit_x=unit.x)
+                objective_x = self._lane_objective_x(attacking_enemy=True, unit=unit)
                 if unit.x < objective_x:
                     moved = try_move(unit, unit.x + 1, unit.y)
                     if not moved:
@@ -779,7 +800,7 @@ class CrLikeSimEnv(gym.Env):
                 elif unit.x > target_x:
                     try_move(unit, unit.x - 1, unit.y)
             elif unit.y >= self.river_bottom_y:
-                objective_x = self._lane_objective_x(attacking_enemy=False, unit_x=unit.x)
+                objective_x = self._lane_objective_x(attacking_enemy=False, unit=unit)
                 if unit.x < objective_x:
                     moved = try_move(unit, unit.x + 1, unit.y)
                     if not moved:

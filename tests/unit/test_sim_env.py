@@ -899,3 +899,50 @@ def test_terminal_outcome_true_draw_when_crowns_and_hp_equal() -> None:
     assert terminated is True
     assert info["winner"] == "draw"
     assert info["outcome_reason"] == "true_draw"
+
+
+def test_lane_objective_lock_persists_while_target_princess_alive() -> None:
+    env = CrLikeSimEnv(config=SimConfig(enemy_spawn_chance=0.0))
+    env.reset(seed=0)
+    unit = ActiveUnit(
+        x=0,
+        y=env.river_top_y,
+        hp=40.0,
+        dps=8.0,
+        ttl=6,
+        card_type="troop",
+        target_type="ground",
+        can_hit_air=False,
+        is_air=False,
+        is_enemy=False,
+    )
+    env.own_units = [unit]
+    first = env._lane_objective_x(attacking_enemy=True, unit=unit)
+    unit.x = env.cfg.grid_w - 1
+    second = env._lane_objective_x(attacking_enemy=True, unit=unit)
+    assert unit.objective_lane == 0
+    assert first == second
+
+
+def test_lane_objective_retargets_when_locked_princess_destroyed() -> None:
+    env = CrLikeSimEnv(config=SimConfig(enemy_spawn_chance=0.0))
+    env.reset(seed=0)
+    unit = ActiveUnit(
+        x=0,
+        y=env.river_top_y,
+        hp=40.0,
+        dps=8.0,
+        ttl=6,
+        card_type="troop",
+        target_type="ground",
+        can_hit_air=False,
+        is_air=False,
+        is_enemy=False,
+    )
+    env.own_units = [unit]
+    _ = env._lane_objective_x(attacking_enemy=True, unit=unit)
+    assert unit.objective_lane == 0
+    env.enemy_princess_hps[0] = 0.0
+    retarget_x = env._lane_objective_x(attacking_enemy=True, unit=unit)
+    assert unit.objective_lane == 1
+    assert retarget_x == env._nearest_bridge_x(env.cfg.grid_w - 1)

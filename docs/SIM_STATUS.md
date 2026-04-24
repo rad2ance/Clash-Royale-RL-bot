@@ -22,6 +22,7 @@
   - post-river lane-objective drift toward alive side towers
   - per-cell occupancy cap to prevent unrealistic unit stacking
   - lane-aware tower pressure targeting + princess fallback retargeting
+  - per-unit lane target lock with retarget on objective destruction
   - archetype-aware projectile speed/splash profiles (in projectile mode)
 - Visual debugging:
   - `env.render()` RGB frames
@@ -42,7 +43,7 @@
 - Board simulation fidelity:
   - richer collision/avoidance beyond simple occupancy cap
   - richer projectile/splash geometry (partially card-archetype-aware)
-  - exact tower targeting/retarget timing behavior
+  - partial tower-target lock/retarget behavior
 - Pathing fidelity:
   - partial lane-objective pathing around bridges/towers
   - more realistic movement speeds and stopping logic
