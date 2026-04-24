@@ -863,6 +863,18 @@ class CrLikeSimEnv(gym.Env):
             and self.time_left > 0.0
         )
 
+    @staticmethod
+    def _crowns_taken_against(princess_hps: np.ndarray, king_hp: float) -> int:
+        if float(king_hp) <= 0.0:
+            return 3
+        return int(np.sum(np.asarray(princess_hps) <= 0.0))
+
+    def _crown_score(self) -> tuple[int, int]:
+        # (player_crowns, enemy_crowns)
+        player_crowns = self._crowns_taken_against(self.enemy_princess_hps, self.enemy_king_hp)
+        enemy_crowns = self._crowns_taken_against(self.own_princess_hps, self.own_king_hp)
+        return int(player_crowns), int(enemy_crowns)
+
     def reset(self, *, seed: int | None = None, options: dict[str, Any] | None = None):
         if seed is not None:
             self.rng = np.random.default_rng(seed)
@@ -961,6 +973,10 @@ class CrLikeSimEnv(gym.Env):
                     self.own_king_hp + self.own_princess_hps.sum()
                 )
                 reward += float(np.clip(-hp_delta / 3000.0, -1.0, 1.0))
+                player_crowns, enemy_crowns = self._crown_score()
+                reward += 0.4 * float(player_crowns - enemy_crowns)
+
+        player_crowns, enemy_crowns = self._crown_score()
 
         info = {
             "legal_action": legal_action,
@@ -978,6 +994,8 @@ class CrLikeSimEnv(gym.Env):
             "pending_projectiles": len(self.pending_projectiles),
             "in_overtime": bool(self.in_overtime),
             "overtime_started": bool(overtime_started),
+            "player_crowns": int(player_crowns),
+            "enemy_crowns": int(enemy_crowns),
         }
         return self._get_obs(), float(reward), terminated, truncated, info
 

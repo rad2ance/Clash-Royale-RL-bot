@@ -844,3 +844,18 @@ def test_match_ends_at_timeout_when_overtime_disabled() -> None:
     assert terminated is True
     assert bool(info["overtime_started"]) is False
     assert bool(info["in_overtime"]) is False
+
+
+def test_crown_count_tracks_destroyed_princess_towers() -> None:
+    env = CrLikeSimEnv(config=SimConfig(enemy_spawn_chance=0.0))
+    env.reset(seed=0)
+    env.enemy_princess_hps[:] = np.array([0.0, env.cfg.princess_hp], dtype=np.float32)
+    _, _, _, _, info = env.step(env.noop_action)
+    assert int(info["player_crowns"]) == 1
+    assert int(info["enemy_crowns"]) == 0
+
+
+def test_king_destruction_counts_as_three_crowns() -> None:
+    env = CrLikeSimEnv(config=SimConfig(enemy_spawn_chance=0.0))
+    assert env._crowns_taken_against(np.array([0.0, 0.0], dtype=np.float32), king_hp=0.0) == 3
+    assert env._crowns_taken_against(np.array([0.0, 100.0], dtype=np.float32), king_hp=100.0) == 1
